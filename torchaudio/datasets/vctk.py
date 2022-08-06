@@ -5,7 +5,7 @@ import torchaudio
 from torch import Tensor
 from torch.hub import download_url_to_file
 from torch.utils.data import Dataset
-from torchaudio.datasets.utils import extract_archive
+from torchaudio.datasets.utils import _extract_zip
 
 URL = "https://datashare.is.ed.ac.uk/bitstream/handle/10283/3443/VCTK-Corpus-0.92.zip"
 _CHECKSUMS = {
@@ -17,7 +17,7 @@ SampleType = Tuple[Tensor, int, str, str, str]
 
 
 class VCTK_092(Dataset):
-    """Create *VCTK 0.92* [:footcite:`yamagishi2019vctk`] Dataset
+    """*VCTK 0.92* :cite:`yamagishi2019vctk` dataset
 
     Args:
         root (str): Root directory where the dataset's top level directory is found.
@@ -59,7 +59,7 @@ class VCTK_092(Dataset):
                 if not os.path.isfile(archive):
                     checksum = _CHECKSUMS.get(url, None)
                     download_url_to_file(url, archive, hash_prefix=checksum)
-                extract_archive(archive, self._path)
+                _extract_zip(archive, self._path)
 
         if not os.path.isdir(self._path):
             raise RuntimeError("Dataset not found. Please use `download=True` to download it.")
@@ -123,8 +123,18 @@ class VCTK_092(Dataset):
             n (int): The index of the sample to be loaded
 
         Returns:
-            (Tensor, int, str, str, str):
-            ``(waveform, sample_rate, transcript, speaker_id, utterance_id)``
+            Tuple of the following items;
+
+            Tensor:
+                Waveform
+            int:
+                Sample rate
+            str:
+                Transcript
+            str:
+                Speaker ID
+            std:
+                Utterance ID
         """
         speaker_id, utterance_id = self._sample_ids[n]
         return self._load_sample(speaker_id, utterance_id, self._mic_id)

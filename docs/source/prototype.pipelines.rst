@@ -25,43 +25,28 @@ EMFORMER_RNNT_BASE_TEDLIUM3
    .. autodata:: EMFORMER_RNNT_BASE_TEDLIUM3
       :no-value:
 
-Source Separation
------------------
 
-SourceSeparationBundle
-~~~~~~~~~~~~~~~~~~~~~~
+HiFiGAN Vocoder
+---------------
 
-.. autoclass:: SourceSeparationBundle
+Interface
+~~~~~~~~~
 
-   .. automethod:: get_model
+:py:class:`HiFiGANVocoderBundle` defines HiFiGAN Vocoder pipeline capable of transforming mel spectrograms into waveforms.
 
-   .. automethod:: sample_rate
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+   :template: autosummary/bundle_class.rst
 
-CONVTASNET_BASE_LIBRI2MIX
-~~~~~~~~~~~~~~~~~~~~~~~~~
+   HiFiGANVocoderBundle
 
-.. container:: py attribute
+Pretrained Models
+~~~~~~~~~~~~~~~~~
 
-   .. autodata:: CONVTASNET_BASE_LIBRI2MIX
-      :no-value:
+.. autosummary::
+   :toctree: generated
+   :nosignatures:
+   :template: autosummary/bundle_data.rst
 
-HDEMUCS_HIGH_MUSDB_PLUS
-~~~~~~~~~~~~~~~~~~~~~~~
-
-.. container:: py attribute
-
-   .. autodata:: HDEMUCS_HIGH_MUSDB_PLUS
-      :no-value:
-
-HDEMUCS_HIGH_MUSDB
-~~~~~~~~~~~~~~~~~~
-
-.. container:: py attribute
-
-   .. autodata:: HDEMUCS_HIGH_MUSDB
-      :no-value:
-
-References
-----------
-
-.. footbibliography::
+   HIFIGAN_VOCODER_V3_LJSPEECH

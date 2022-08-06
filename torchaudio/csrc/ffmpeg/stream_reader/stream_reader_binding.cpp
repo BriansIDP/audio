@@ -42,7 +42,7 @@ TORCH_LIBRARY_FRAGMENT(torchaudio, m) {
       .def(
           "find_best_video_stream",
           [](S s) { return s->find_best_video_stream(); })
-      .def("seek", [](S s, double t) { return s->seek(t); })
+      .def("seek", [](S s, double t, int64_t mode) { return s->seek(t, mode); })
       .def(
           "add_audio_stream",
           [](S s,
@@ -86,6 +86,11 @@ TORCH_LIBRARY_FRAGMENT(torchaudio, m) {
             return s->process_packet(timeout, backoff);
           })
       .def("process_all_packets", [](S s) { s->process_all_packets(); })
+      .def(
+          "fill_buffer",
+          [](S s, const c10::optional<double>& timeout, const double backoff) {
+            return s->fill_buffer(timeout, backoff);
+          })
       .def("is_buffer_ready", [](S s) { return s->is_buffer_ready(); })
       .def("pop_chunks", [](S s) { return s->pop_chunks(); });
 }

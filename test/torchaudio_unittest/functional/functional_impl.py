@@ -20,7 +20,7 @@ from torchaudio_unittest.common_utils import (
 
 class Functional(TestBaseMixin):
     def _test_resample_waveform_accuracy(
-        self, up_scale_factor=None, down_scale_factor=None, resampling_method="sinc_interpolation", atol=1e-1, rtol=1e-4
+        self, up_scale_factor=None, down_scale_factor=None, resampling_method="sinc_interp_hann", atol=1e-1, rtol=1e-4
     ):
         # resample the signal and compare it to the ground truth
         n_to_trim = 20
@@ -51,6 +51,7 @@ class Functional(TestBaseMixin):
     def _test_costs_and_gradients(self, data, ref_costs, ref_gradients, atol=1e-6, rtol=1e-2):
         logits_shape = data["logits"].shape
         costs, gradients = rnnt_utils.compute_with_pytorch_transducer(data=data)
+
         self.assertEqual(costs, ref_costs, atol=atol, rtol=rtol)
         self.assertEqual(logits_shape, gradients.shape)
         self.assertEqual(gradients, ref_gradients, atol=atol, rtol=rtol)
@@ -470,7 +471,7 @@ class Functional(TestBaseMixin):
     @parameterized.expand(
         list(
             itertools.product(
-                ["sinc_interpolation", "kaiser_window"],
+                ["sinc_interp_hann", "sinc_interp_kaiser"],
                 [16000, 44100],
             )
         )
@@ -481,7 +482,7 @@ class Functional(TestBaseMixin):
         resampled = F.resample(waveform, sample_rate, sample_rate)
         self.assertEqual(waveform, resampled)
 
-    @parameterized.expand([("sinc_interpolation"), ("kaiser_window")])
+    @parameterized.expand([("sinc_interp_hann"), ("sinc_interp_kaiser")])
     def test_resample_waveform_upsample_size(self, resampling_method):
         sr = 16000
         waveform = get_whitenoise(
@@ -491,7 +492,7 @@ class Functional(TestBaseMixin):
         upsampled = F.resample(waveform, sr, sr * 2, resampling_method=resampling_method)
         assert upsampled.size(-1) == waveform.size(-1) * 2
 
-    @parameterized.expand([("sinc_interpolation"), ("kaiser_window")])
+    @parameterized.expand([("sinc_interp_hann"), ("sinc_interp_kaiser")])
     def test_resample_waveform_downsample_size(self, resampling_method):
         sr = 16000
         waveform = get_whitenoise(
@@ -501,7 +502,7 @@ class Functional(TestBaseMixin):
         downsampled = F.resample(waveform, sr, sr // 2, resampling_method=resampling_method)
         assert downsampled.size(-1) == waveform.size(-1) // 2
 
-    @parameterized.expand([("sinc_interpolation"), ("kaiser_window")])
+    @parameterized.expand([("sinc_interp_hann"), ("sinc_interp_kaiser")])
     def test_resample_waveform_identity_size(self, resampling_method):
         sr = 16000
         waveform = get_whitenoise(
@@ -514,7 +515,7 @@ class Functional(TestBaseMixin):
     @parameterized.expand(
         list(
             itertools.product(
-                ["sinc_interpolation", "kaiser_window"],
+                ["sinc_interp_hann", "sinc_interp_kaiser"],
                 list(range(1, 20)),
             )
         )
@@ -525,7 +526,7 @@ class Functional(TestBaseMixin):
     @parameterized.expand(
         list(
             itertools.product(
-                ["sinc_interpolation", "kaiser_window"],
+                ["sinc_interp_hann", "sinc_interp_kaiser"],
                 list(range(1, 20)),
             )
         )
@@ -637,12 +638,24 @@ class Functional(TestBaseMixin):
             rtol=rtol,
         )
 
-    def test_rnnt_loss_costs_and_gradients_random_data_with_numpy_fp32(self):
+    @parameterized.expand([(True,), (False,)])
+    def test_rnnt_loss_costs_and_gradients_random_data_with_numpy_fp32(self, fused_log_softmax):
         seed = 777
         for i in range(5):
-            data = rnnt_utils.get_random_data(dtype=torch.float32, device=self.device, seed=(seed + i))
+            data = rnnt_utils.get_random_data(
+                fused_log_softmax=fused_log_softmax, dtype=torch.float32, device=self.device, seed=(seed + i)
+            )
             ref_costs, ref_gradients = rnnt_utils.compute_with_numpy_transducer(data=data)
             self._test_costs_and_gradients(data=data, ref_costs=ref_costs, ref_gradients=ref_gradients)
+
+    def test_rnnt_loss_nonfused_softmax(self):
+        data = rnnt_utils.get_B1_T10_U3_D4_data()
+        ref_costs, ref_gradients = rnnt_utils.compute_with_numpy_transducer(data=data)
+        self._test_costs_and_gradients(
+            data=data,
+            ref_costs=ref_costs,
+            ref_gradients=ref_gradients,
+        )
 
     def test_psd(self):
         """Verify the ``F.psd`` method by the numpy implementation.

@@ -14,19 +14,27 @@ class StreamProcessor {
   using KeyType = int;
 
  private:
-  AVFramePtr pFrame1;
-  AVFramePtr pFrame2;
+  // Link to the corresponding stream object
+  const AVStream* stream;
 
   // Components for decoding source media
-  double decoder_time_base; // for debug
+  AVFramePtr pFrame1;
+  AVFramePtr pFrame2;
   Decoder decoder;
 
   KeyType current_key = 0;
   std::map<KeyType, Sink> sinks;
 
+  // Used for precise seek.
+  // 0: no discard
+  // Positive Values: decoded frames with PTS values less than this are
+  // discarded.
+  // Negative values: UB. Should not happen.
+  int64_t discard_before_pts = 0;
+
  public:
   StreamProcessor(
-      AVCodecParameters* codecpar,
+      AVStream* stream,
       const c10::optional<std::string>& decoder_name,
       const c10::optional<OptionDict>& decoder_option,
       const torch::Device& device);
@@ -48,8 +56,6 @@ class StreamProcessor {
   // 3. Configure a buffer.
   // 4. Return filter ID.
   KeyType add_stream(
-      AVRational input_time_base,
-      AVCodecParameters* codecpar,
       int frames_per_chunk,
       int num_chunks,
       const c10::optional<std::string>& filter_description,
@@ -57,6 +63,10 @@ class StreamProcessor {
 
   // 1. Remove the stream
   void remove_stream(KeyType key);
+
+  // Set discard
+  // The input timestamp must be expressed in AV_TIME_BASE unit.
+  void set_discard_timestamp(int64_t timestamp);
 
   //////////////////////////////////////////////////////////////////////////////
   // Query methods

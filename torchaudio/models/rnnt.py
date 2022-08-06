@@ -458,6 +458,9 @@ class RNNT(torch.nn.Module):
     Note:
         To build the model, please use one of the factory functions.
 
+    See Also:
+        :class:`torchaudio.pipelines.RNNTBundle`: ASR pipeline with pre-trained models.
+
     Args:
         transcriber (torch.nn.Module): transcription network.
         predictor (torch.nn.Module): prediction network.
@@ -706,7 +709,7 @@ def emformer_rnnt_model(
     lstm_layer_norm_epsilon: float,
     lstm_dropout: float,
 ) -> RNNT:
-    r"""Builds Emformer-based recurrent neural network transducer (RNN-T) model.
+    r"""Builds Emformer-based :class:`~torchaudio.models.RNNT`.
 
     Note:
         For non-streaming inference, the expectation is for `transcribe` to be called on input
@@ -779,7 +782,7 @@ def emformer_rnnt_model(
 
 
 def emformer_rnnt_base(num_symbols: int) -> RNNT:
-    r"""Builds basic version of Emformer RNN-T model.
+    r"""Builds basic version of Emformer-based :class:`~torchaudio.models.RNNT`.
 
     Args:
         num_symbols (int): The size of target token lexicon.

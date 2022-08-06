@@ -7,7 +7,7 @@ import torchaudio
 from torch import Tensor
 from torch.hub import download_url_to_file
 from torch.utils.data import Dataset
-from torchaudio.datasets.utils import extract_archive
+from torchaudio.datasets.utils import _extract_tar
 
 URL = "aew"
 FOLDER_IN_ARCHIVE = "ARCTIC"
@@ -49,7 +49,7 @@ def load_cmuarctic_item(line: str, path: str, folder_audio: str, ext_audio: str)
 
 
 class CMUARCTIC(Dataset):
-    """Create a Dataset for *CMU ARCTIC* [:footcite:`Kominek03cmuarctic`].
+    """*CMU ARCTIC* :cite:`Kominek03cmuarctic` dataset.
 
     Args:
         root (str or Path): Path to the directory where the dataset is found or downloaded.
@@ -119,7 +119,7 @@ class CMUARCTIC(Dataset):
                 if not os.path.isfile(archive):
                     checksum = _CHECKSUMS.get(url, None)
                     download_url_to_file(url, archive, hash_prefix=checksum)
-                extract_archive(archive)
+                _extract_tar(archive)
         else:
             if not os.path.exists(self._path):
                 raise RuntimeError(
@@ -139,7 +139,16 @@ class CMUARCTIC(Dataset):
             n (int): The index of the sample to be loaded
 
         Returns:
-            (Tensor, int, str, str): ``(waveform, sample_rate, transcript, utterance_id)``
+            Tuple of the following items;
+
+            Tensor:
+                Waveform
+            int:
+                Sample rate
+            str:
+                Transcript
+            str:
+                Utterance ID
         """
         line = self._walker[n]
         return load_cmuarctic_item(line, self._path, self._folder_audio, self._ext_audio)

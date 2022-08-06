@@ -6,7 +6,7 @@ import torchaudio
 from torch import Tensor
 from torch.hub import download_url_to_file
 from torch.utils.data import Dataset
-from torchaudio.datasets.utils import extract_archive
+from torchaudio.datasets.utils import _extract_tar
 
 
 _RELEASE_CONFIGS = {
@@ -41,8 +41,7 @@ _RELEASE_CONFIGS = {
 
 
 class TEDLIUM(Dataset):
-    """
-    Create a Dataset for *Tedlium* [:footcite:`rousseau2012tedlium`]. It supports releases 1,2 and 3.
+    """*Tedlium* :cite:`rousseau2012tedlium` dataset (releases 1,2 and 3).
 
     Args:
         root (str or Path): Path to the directory where the dataset is found or downloaded.
@@ -107,7 +106,7 @@ class TEDLIUM(Dataset):
                 if not os.path.isfile(archive):
                     checksum = _RELEASE_CONFIGS[release]["checksum"]
                     download_url_to_file(url, archive, hash_prefix=checksum)
-                extract_archive(archive)
+                _extract_tar(archive)
         else:
             if not os.path.exists(self._path):
                 raise RuntimeError(
@@ -178,7 +177,20 @@ class TEDLIUM(Dataset):
             n (int): The index of the sample to be loaded
 
         Returns:
-            tuple: ``(waveform, sample_rate, transcript, talk_id, speaker_id, identifier)``
+            Tuple of the following items;
+
+            Tensor:
+                Waveform
+            int:
+                Sample rate
+            str:
+                Transcript
+            int:
+                Talk ID
+            int:
+                Speaker ID
+            int:
+                Identifier
         """
         fileid, line = self._filelist[n]
         return self._load_tedlium_item(fileid, line, self._path)

@@ -1,6 +1,6 @@
 import torchaudio
 
-_LAZILY_IMPORTED = [
+_STREAM_READER = [
     "StreamReader",
     "StreamReaderSourceStream",
     "StreamReaderSourceAudioStream",
@@ -8,15 +8,29 @@ _LAZILY_IMPORTED = [
     "StreamReaderOutputStream",
 ]
 
+_STREAM_WRITER = [
+    "StreamWriter",
+]
+
+
+_LAZILY_IMPORTED = _STREAM_READER + _STREAM_WRITER
+
 
 def __getattr__(name: str):
     if name in _LAZILY_IMPORTED:
+        if not torchaudio._extension._FFMPEG_INITIALIZED:
+            torchaudio._extension._init_ffmpeg()
 
-        torchaudio._extension._init_ffmpeg()
+        if name in _STREAM_READER:
+            from . import _stream_reader
 
-        from . import _stream_reader
+            item = getattr(_stream_reader, name)
 
-        item = getattr(_stream_reader, name)
+        else:
+            from . import _stream_writer
+
+            item = getattr(_stream_writer, name)
+
         globals()[name] = item
         return item
     raise AttributeError(f"module {__name__} has no attribute {name}")

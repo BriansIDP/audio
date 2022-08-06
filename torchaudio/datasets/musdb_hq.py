@@ -6,7 +6,7 @@ import torch
 import torchaudio
 from torch.hub import download_url_to_file
 from torch.utils.data import Dataset
-from torchaudio.datasets.utils import extract_archive
+from torchaudio.datasets.utils import _extract_zip
 
 _URL = "https://zenodo.org/record/3338373/files/musdb18hq.zip"
 _CHECKSUM = "baac80d0483c61d74b2e5f3be75fa557eec52898339e6aa45c1fa48833c5d21d"
@@ -31,7 +31,7 @@ _VALIDATION_SET = [
 
 
 class MUSDB_HQ(Dataset):
-    """Create *MUSDB_HQ* [:footcite:`MUSDB18HQ`] Dataset
+    """*MUSDB_HQ* :cite:`MUSDB18HQ` dataset.
 
     Args:
         root (str or Path): Root directory where the dataset's top level directory is found
@@ -74,7 +74,7 @@ class MUSDB_HQ(Dataset):
                     raise RuntimeError("Dataset not found. Please use `download=True` to download")
                 download_url_to_file(_URL, archive, hash_prefix=_CHECKSUM)
             os.makedirs(base_path, exist_ok=True)
-            extract_archive(archive, base_path)
+            _extract_zip(archive, base_path)
 
         self.names = self._collect_songs()
 
@@ -122,7 +122,16 @@ class MUSDB_HQ(Dataset):
         Args:
             n (int): The index of the sample to be loaded
         Returns:
-            (Tensor, int, int, str): ``(waveforms, sample_rate, num_frames, track_name)``
+            Tuple of the following items;
+
+            Tensor:
+                Waveform
+            int:
+                Sample rate
+            int:
+                Num frames
+            str:
+                Track name
         """
         return self._load_sample(n)
 

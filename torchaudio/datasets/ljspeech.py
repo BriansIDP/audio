@@ -7,7 +7,7 @@ import torchaudio
 from torch import Tensor
 from torch.hub import download_url_to_file
 from torch.utils.data import Dataset
-from torchaudio.datasets.utils import extract_archive
+from torchaudio.datasets.utils import _extract_tar
 
 
 _RELEASE_CONFIGS = {
@@ -20,7 +20,7 @@ _RELEASE_CONFIGS = {
 
 
 class LJSPEECH(Dataset):
-    """Create a Dataset for *LJSpeech-1.1* [:footcite:`ljspeech17`].
+    """*LJSpeech-1.1* :cite:`ljspeech17` dataset.
 
     Args:
         root (str or Path): Path to the directory where the dataset is found or downloaded.
@@ -59,7 +59,7 @@ class LJSPEECH(Dataset):
                 if not os.path.isfile(archive):
                     checksum = _RELEASE_CONFIGS["release1"]["checksum"]
                     download_url_to_file(url, archive, hash_prefix=checksum)
-                extract_archive(archive)
+                _extract_tar(archive)
         else:
             if not os.path.exists(self._path):
                 raise RuntimeError(
@@ -78,8 +78,16 @@ class LJSPEECH(Dataset):
             n (int): The index of the sample to be loaded
 
         Returns:
-            (Tensor, int, str, str):
-            ``(waveform, sample_rate, transcript, normalized_transcript)``
+            Tuple of the following items;
+
+            Tensor:
+                Waveform
+            int:
+                Sample rate
+            str:
+                Transcript
+            str:
+                Normalized Transcript
         """
         line = self._flist[n]
         fileid, transcript, normalized_transcript = line

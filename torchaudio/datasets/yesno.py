@@ -6,7 +6,7 @@ import torchaudio
 from torch import Tensor
 from torch.hub import download_url_to_file
 from torch.utils.data import Dataset
-from torchaudio.datasets.utils import extract_archive
+from torchaudio.datasets.utils import _extract_tar
 
 
 _RELEASE_CONFIGS = {
@@ -19,7 +19,7 @@ _RELEASE_CONFIGS = {
 
 
 class YESNO(Dataset):
-    """Create a Dataset for *YesNo* [:footcite:`YesNo`].
+    """*YesNo* :cite:`YesNo` dataset.
 
     Args:
         root (str or Path): Path to the directory where the dataset is found or downloaded.
@@ -52,7 +52,7 @@ class YESNO(Dataset):
                 if not os.path.isfile(archive):
                     checksum = _RELEASE_CONFIGS["release1"]["checksum"]
                     download_url_to_file(url, archive, hash_prefix=checksum)
-                extract_archive(archive)
+                _extract_tar(archive)
 
         if not os.path.isdir(self._path):
             raise RuntimeError("Dataset not found. Please use `download=True` to download it.")
@@ -72,7 +72,14 @@ class YESNO(Dataset):
             n (int): The index of the sample to be loaded
 
         Returns:
-            (Tensor, int, List[int]): ``(waveform, sample_rate, labels)``
+            Tuple of the following items;
+
+            Tensor:
+                Waveform
+            int:
+                Sample rate
+            List[int]:
+                labels
         """
         fileid = self._walker[n]
         item = self._load_item(fileid, self._path)

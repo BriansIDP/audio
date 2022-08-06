@@ -6,11 +6,12 @@ import sys
 import tempfile
 import time
 import unittest
+from itertools import zip_longest
 
 import torch
 import torchaudio
 from torch.testing._internal.common_utils import TestCase as PytorchTestCase
-from torchaudio._internal.module_utils import is_kaldi_available, is_module_available, is_sox_available
+from torchaudio._internal.module_utils import is_module_available
 
 from .backend_utils import set_audio_backend
 
@@ -207,13 +208,20 @@ skipIfNoCuda = _skipIf(
     reason="CUDA is not available.",
     key="NO_CUDA",
 )
+# Skip test if CUDA memory is not enough
+# TODO: detect the real CUDA memory size and allow call site to configure how much the test needs
+skipIfCudaSmallMemory = _skipIf(
+    "CI" in os.environ and torch.cuda.is_available(),  # temporary
+    reason="CUDA does not have enough memory.",
+    key="CUDA_SMALL_MEMORY",
+)
 skipIfNoSox = _skipIf(
-    not is_sox_available(),
+    not torchaudio._extension._SOX_INITIALIZED,
     reason="Sox features are not available.",
     key="NO_SOX",
 )
 skipIfNoKaldi = _skipIf(
-    not is_kaldi_available(),
+    not torchaudio._extension._IS_KALDI_AVAILABLE,
     reason="Kaldi features are not available.",
     key="NO_KALDI",
 )
@@ -245,3 +253,16 @@ skipIfPy310 = _skipIf(
     ),
     key="ON_PYTHON_310",
 )
+
+
+def zip_equal(*iterables):
+    """With the regular Python `zip` function, if one iterable is longer than the other,
+    the remainder portions are ignored.This is resolved in Python 3.10 where we can use
+    `strict=True` in the `zip` function
+    From https://github.com/pytorch/text/blob/c047efeba813ac943cb8046a49e858a8b529d577/test/torchtext_unittest/common/case_utils.py#L45-L54  # noqa: E501
+    """
+    sentinel = object()
+    for combo in zip_longest(*iterables, fillvalue=sentinel):
+        if sentinel in combo:
+            raise ValueError("Iterables have different lengths")
+        yield combo

@@ -14,10 +14,15 @@ conformer_rnnt_base
 
 .. autofunction:: conformer_rnnt_base
 
-conv_tasnet_base
-~~~~~~~~~~~~~~~~
+emformer_hubert_model
+~~~~~~~~~~~~~~~~~~~~~
 
-.. autofunction:: conv_tasnet_base
+.. autofunction:: emformer_hubert_model
+
+emformer_hubert_base
+~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: emformer_hubert_base
 
 ConvEmformer
 ~~~~~~~~~~~~
@@ -28,38 +33,61 @@ ConvEmformer
 
   .. automethod:: infer
 
-Hybrid Demucs
-~~~~~~~~~~~~~
+ConformerWav2Vec2PretrainModel
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Model
------
-
-HDemucs
-^^^^^^^
-
-.. autoclass:: HDemucs
+.. autoclass:: ConformerWav2Vec2PretrainModel
 
   .. automethod:: forward
 
-Factory Functions
------------------
+conformer_wav2vec2_model
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-hdemucs_low
-^^^^^^^^^^^
+.. autofunction:: conformer_wav2vec2_model
 
-.. autofunction:: hdemucs_low
+conformer_wav2vec2_base
+~~~~~~~~~~~~~~~~~~~~~~~
 
-hdemucs_medium
-^^^^^^^^^^^^^^
+.. autofunction:: conformer_wav2vec2_base
 
-.. autofunction:: hdemucs_medium
+conformer_wav2vec2_pretrain_model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-hdemucs_high
-^^^^^^^^^^^^
+.. autofunction:: conformer_wav2vec2_pretrain_model
 
-.. autofunction:: hdemucs_high
+conformer_wav2vec2_pretrain_base
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-References
-~~~~~~~~~~
+.. autofunction:: conformer_wav2vec2_pretrain_base
 
-.. footbibliography::
+conformer_wav2vec2_pretrain_large
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: conformer_wav2vec2_pretrain_large
+
+HiFiGANVocoder
+~~~~~~~~~~~~~~
+
+.. autoclass:: HiFiGANVocoder
+
+  .. automethod:: forward
+
+hifigan_vocoder
+~~~~~~~~~~~~~~~
+
+.. autofunction:: hifigan_vocoder
+
+hifigan_vocoder_v1
+~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: hifigan_vocoder_v1
+
+hifigan_vocoder_v2
+~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: hifigan_vocoder_v2
+
+hifigan_vocoder_v3
+~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: hifigan_vocoder_v3

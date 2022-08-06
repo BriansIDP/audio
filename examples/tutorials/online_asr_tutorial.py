@@ -2,7 +2,7 @@
 Online ASR with Emformer RNN-T
 ==============================
 
-**Author**: `Jeff Hwang <jeffhwang@fb.com>`__, `Moto Hira <moto@fb.com>`__
+**Author**: `Jeff Hwang <jeffhwang@meta.com>`__, `Moto Hira <moto@meta.com>`__
 
 This tutorial shows how to use Emformer RNN-T and streaming API
 to perform online speech recognition.
@@ -13,16 +13,11 @@ to perform online speech recognition.
 #
 # .. note::
 #
-#    This tutorial requires Streaming API, FFmpeg libraries (>=4.1, <5),
-#    and SentencePiece.
-#
-#    The Streaming API is available in nightly builds.
-#    Please refer to https://pytorch.org/get-started/locally/
-#    for instructions.
+#    This tutorial requires FFmpeg libraries (>=4.1, <4.4) and SentencePiece.
 #
 #    There are multiple ways to install FFmpeg libraries.
 #    If you are using Anaconda Python distribution,
-#    ``conda install 'ffmpeg<5'`` will install
+#    ``conda install 'ffmpeg<4.4'`` will install
 #    the required FFmpeg libraries.
 #
 #    You can install SentencePiece by running ``pip install sentencepiece``.
@@ -44,9 +39,16 @@ to perform online speech recognition.
 # --------------
 #
 
-import IPython
 import torch
 import torchaudio
+
+print(torch.__version__)
+print(torchaudio.__version__)
+
+######################################################################
+#
+import IPython
+import matplotlib.pyplot as plt
 
 try:
     from torchaudio.io import StreamReader
@@ -56,13 +58,9 @@ except ModuleNotFoundError:
 
         print(
             """
-            To enable running this notebook in Google Colab, install nightly
-            torch and torchaudio builds and the requisite third party libraries by
-            adding the following code block to the top of the notebook before running it:
+            To enable running this notebook in Google Colab, install the requisite
+            third party libraries by running the following code block:
 
-            !pip3 uninstall -y torch torchvision torchaudio
-            !pip3 install --pre torch torchaudio --extra-index-url https://download.pytorch.org/whl/nightly/cpu
-            !pip3 install sentencepiece
             !add-apt-repository -y ppa:savoury1/ffmpeg4
             !apt-get -qq install -y ffmpeg
             """
@@ -71,18 +69,15 @@ except ModuleNotFoundError:
         pass
     raise
 
-print(torch.__version__)
-print(torchaudio.__version__)
-
 
 ######################################################################
 # 3. Construct the pipeline
 # -------------------------
 #
 # Pre-trained model weights and related pipeline components are
-# bundled as :py:func:`torchaudio.pipelines.RNNTBundle`.
+# bundled as :py:class:`torchaudio.pipelines.RNNTBundle`.
 #
-# We use :py:func:`torchaudio.pipelines.EMFORMER_RNNT_BASE_LIBRISPEECH`,
+# We use :py:data:`torchaudio.pipelines.EMFORMER_RNNT_BASE_LIBRISPEECH`,
 # which is a Emformer RNN-T model trained on LibriSpeech dataset.
 #
 
@@ -118,10 +113,10 @@ print(f"Right context: {context_length} frames ({context_length / sample_rate} s
 # 4. Configure the audio stream
 # -----------------------------
 #
-# Next, we configure the input audio stream using :py:func:`~torchaudio.io.StreamReader`.
+# Next, we configure the input audio stream using :py:class:`torchaudio.io.StreamReader`.
 #
 # For the detail of this API, please refer to the
-# `Media Stream API tutorial <./streaming_api_tutorial.html>`__.
+# `StreamReader Basic Usage <./streamreader_basic_tutorial.html>`__.
 #
 
 ######################################################################
@@ -201,10 +196,28 @@ state, hypothesis = None, None
 stream_iterator = streamer.stream()
 
 
+def _plot(feats, num_iter, unit=25):
+    unit_dur = segment_length / sample_rate * unit
+    num_plots = num_iter // unit + (1 if num_iter % unit else 0)
+    fig, axes = plt.subplots(num_plots, 1)
+    t0 = 0
+    for i, ax in enumerate(axes):
+        feats_ = feats[i*unit:(i+1)*unit]
+        t1 = t0 + segment_length / sample_rate * len(feats_)
+        feats_ = torch.cat([f[2:-2] for f in feats_])  # remove boundary effect and overlap
+        ax.imshow(feats_.T, extent=[t0, t1, 0, 1], aspect="auto", origin="lower")
+        ax.tick_params(which='both', left=False, labelleft=False)
+        ax.set_xlim(t0, t0 + unit_dur)
+        t0 = t1
+    fig.suptitle("MelSpectrogram Feature")
+    plt.tight_layout()
+
+
 @torch.inference_mode()
-def run_inference(num_iter=200):
+def run_inference(num_iter=100):
     global state, hypothesis
     chunks = []
+    feats = []
     for i, (chunk,) in enumerate(stream_iterator, start=1):
         segment = cacher(chunk[:, 0])
         features, length = feature_extractor(segment)
@@ -214,9 +227,12 @@ def run_inference(num_iter=200):
         print(transcript, end="", flush=True)
 
         chunks.append(chunk)
+        feats.append(features)
         if i == num_iter:
             break
 
+    # Plot the features
+    _plot(feats, num_iter)
     return IPython.display.Audio(torch.cat(chunks).T.numpy(), rate=bundle.sample_rate)
 
 
@@ -254,3 +270,37 @@ run_inference()
 #
 
 run_inference()
+
+######################################################################
+#
+
+run_inference()
+
+######################################################################
+#
+
+run_inference()
+
+######################################################################
+#
+
+run_inference()
+
+######################################################################
+#
+
+run_inference()
+
+######################################################################
+#
+
+run_inference()
+
+######################################################################
+#
+
+run_inference()
+
+######################################################################
+#
+# Tag: :obj:`torchaudio.io`

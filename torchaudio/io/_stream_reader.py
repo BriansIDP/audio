@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterator, Optional, Tuple
+from typing import BinaryIO, Dict, Iterator, Optional, Tuple, Union
 
 import torch
 import torchaudio
@@ -9,24 +9,23 @@ import torchaudio
 
 @dataclass
 class StreamReaderSourceStream:
-    """StreamReaderSourceStream()
+    """The metadata of a source stream, returned by :meth:`~torchaudio.io.StreamReader.get_src_stream_info`.
 
-    The metadata of a source stream. This class is used when representing streams of
-    media type other than `audio` or `video`.
+    This class is used when representing streams of media type other than `audio` or `video`.
 
-    When source stream is `audio` or `video` type, :py:class:`SourceAudioStream` and
-    :py:class:`SourceVideoStream`, which reports additional media-specific attributes,
+    When source stream is `audio` or `video` type, :class:`StreamReaderSourceAudioStream` and
+    :class:`StreamReaderSourceVideoStream`, which reports additional media-specific attributes,
     are used respectively.
     """
 
     media_type: str
     """The type of the stream.
-    One of `audio`, `video`, `data`, `subtitle`, `attachment` and empty string.
+    One of ``"audio"``, ``"video"``, ``"data"``, ``"subtitle"``, ``"attachment"`` and empty string.
 
     .. note::
-       Only `audio` and `video` streams are supported for output.
+       Only audio and video streams are supported for output.
     .. note::
-       Still images, such as PNG and JPEG formats are reported as `video`.
+       Still images, such as PNG and JPEG formats are reported as video.
     """
     codec: str
     """Short name of the codec. Such as ``"pcm_s16le"`` and ``"h264"``."""
@@ -67,13 +66,12 @@ class StreamReaderSourceStream:
 
 @dataclass
 class StreamReaderSourceAudioStream(StreamReaderSourceStream):
-    """StreamReaderSourceAudioStream()
+    """The metadata of an audio source stream, returned by :meth:`~torchaudio.io.StreamReader.get_src_stream_info`.
 
-    The metadata of an audio source stream.
+    This class is used when representing audio stream.
 
-    In addition to the attributes reported by :py:func:`StreamReaderSourceStream`,
-    when the source stream is audio type, then the following additional attributes
-    are reported.
+    In addition to the attributes reported by :class:`StreamReaderSourceStream`,
+    the following attributes are reported.
     """
 
     sample_rate: float
@@ -84,13 +82,12 @@ class StreamReaderSourceAudioStream(StreamReaderSourceStream):
 
 @dataclass
 class StreamReaderSourceVideoStream(StreamReaderSourceStream):
-    """StreamReaderSourceVideoStream()
+    """The metadata of a video source stream, returned by :meth:`~torchaudio.io.StreamReader.get_src_stream_info`.
 
-    The metadata of a video source stream.
+    This class is used when representing video stream.
 
-    In addition to the attributes reported by :py:func:`StreamReaderSourceStream`,
-    when the source stream is audio type, then the following additional attributes
-    are reported.
+    In addition to the attributes reported by :class:`StreamReaderSourceStream`,
+    the following attributes are reported.
     """
 
     width: int
@@ -170,9 +167,8 @@ def _parse_si(i):
 
 @dataclass
 class StreamReaderOutputStream:
-    """OutputStream()
-
-    Output stream configured on :py:class:`StreamReader`.
+    """Output stream configured on :class:`StreamReader`,
+    returned by :meth:`~torchaudio.io.StreamReader.get_out_stream_info`.
     """
 
     source_index: int
@@ -220,11 +216,16 @@ def _format_doc(**kwargs):
 
 _frames_per_chunk = """Number of frames returned as one chunk.
                 If the source stream is exhausted before enough frames are buffered,
-                then the chunk is returned as-is."""
+                then the chunk is returned as-is.
+
+                Providing ``-1`` disables chunking and :py:func:`pop_chunks` method
+                will concatenate all the buffered frames and return it."""
 
 _buffer_chunk_size = """Internal buffer size.
                 When the number of chunks buffered exceeds this number, old frames are
-                dropped.
+                dropped. For example, if `frames_per_chunk` is 5 and `buffer_chunk_size` is
+                3, then frames older than 15 are dropped.
+                Providing ``-1`` disables this behavior.
 
                 Default: ``3``."""
 
@@ -238,25 +239,41 @@ _video_stream_index = """The source video stream index.
 _decoder = """The name of the decoder to be used.
                 When provided, use the specified decoder instead of the default one.
 
-                To list the available decoders, you can use `ffmpeg -decoders` command.
+                To list the available decoders, please use
+                :py:func:`~torchaudio.utils.ffmpeg_utils.get_audio_decoders` for audio, and
+                :py:func:`~torchaudio.utils.ffmpeg_utils.get_video_decoders` for video.
 
                 Default: ``None``."""
 
 _decoder_option = """Options passed to decoder.
-                Mapping from str to str.
+                Mapping from str to str. (Default: ``None``)
 
                 To list decoder options for a decoder, you can use
                 `ffmpeg -h decoder=<DECODER>` command.
 
-                Default: ``None``."""
+                In addition to decoder-specific options, you can also pass options related
+                to multithreading. They are effective only if the decoder support them.
+                If neither of them are provided, StreamReader defaults to single thread.
+
+                 - ``"threads"``: The number of threads (in str) or the value ``"0"``
+                   to let FFmpeg decides based on its heuristics.
+                 - ``"thread_type"``: Which multithreading method to use.
+                   The valid values are ``"frame"`` or ``"slice"``.
+                   Note that sach decoder supports different set of methods.
+                   If not provided, a default value is used.
+                    - ``"frame"``: Decode more than one frame at once.
+                      Each thread handles one frame.
+                      This will increase decoding delay by one frame per thread
+                    - ``"slice"``: Decode more than one part of a single frame at once.
+                """
 
 
 _hw_accel = """Enable hardware acceleration.
 
                 When video is decoded on CUDA hardware, for example
-                `decode="h264_cuvid"`, passing CUDA device indicator to `hw_accel`
-                (i.e. `hw_accel="cuda:0"`) will place the resulting frames
-                directly on the specifiec CUDA device.
+                `decoder="h264_cuvid"`, passing CUDA device indicator to `hw_accel`
+                (i.e. `hw_accel="cuda:0"`) will make StreamReader place the resulting
+                frames directly on the specified CUDA device as CUDA tensor.
 
                 If `None`, the frame will be moved to CPU memory.
                 Default: ``None``."""
@@ -287,7 +304,7 @@ class StreamReader:
     For the detailed usage of this class, please refer to the tutorial.
 
     Args:
-        src (str or file-like object): The media source.
+        src (str, file-like object or Tensor): The media source.
             If string-type, it must be a resource indicator that FFmpeg can
             handle. This includes a file path, URL, device identifier or
             filter expression. The supported value depends on the FFmpeg found
@@ -299,6 +316,9 @@ class StreamReader:
             the method when parsing media metadata. This improves the reliability
             of codec detection. The signagure of `seek` method must be
             `seek(offset: int, whence: int) -> int`.
+
+            If Tensor, it is interpreted as byte buffer.
+            It must be one-dimensional, of type ``torch.uint8``.
 
             Please refer to the following for the expected signature and behavior
             of `read` and `seek` method.
@@ -325,12 +345,18 @@ class StreamReader:
                This option roughly corresponds to ``-f`` option of ``ffmpeg`` command.
                Please refer to the ffmpeg documentations for the possible values.
 
-               https://ffmpeg.org/ffmpeg-formats.html
+               https://ffmpeg.org/ffmpeg-formats.html#Demuxers
+
+               Please use :py:func:`~torchaudio.utils.ffmpeg_utils.get_demuxers` to list the
+               demultiplexers available in the current environment.
 
                For device access, the available values vary based on hardware (AV device) and
                software configuration (ffmpeg build).
 
-               https://ffmpeg.org/ffmpeg-devices.html
+               https://ffmpeg.org/ffmpeg-devices.html#Input-Devices
+
+               Please use :py:func:`~torchaudio.utils.ffmpeg_utils.get_input_devices` to list
+               the input devices available in the current environment.
 
         option (dict of str to str, optional):
             Custom option passed when initializing format context (opening source).
@@ -347,17 +373,20 @@ class StreamReader:
 
     def __init__(
         self,
-        src: str,
+        src: Union[str, BinaryIO, torch.Tensor],
         format: Optional[str] = None,
         option: Optional[Dict[str, str]] = None,
         buffer_size: int = 4096,
     ):
+        torch._C._log_api_usage_once("torchaudio.io.StreamReader")
         if isinstance(src, str):
             self._be = torch.classes.torchaudio.ffmpeg_StreamReader(src, format, option)
+        elif isinstance(src, torch.Tensor):
+            self._be = torch.classes.torchaudio.ffmpeg_StreamReaderTensor(src, format, option, buffer_size)
         elif hasattr(src, "read"):
-            self._be = torchaudio._torchaudio_ffmpeg.StreamReaderFileObj(src, format, option, buffer_size)
+            self._be = torchaudio.lib._torchaudio_ffmpeg.StreamReaderFileObj(src, format, option, buffer_size)
         else:
-            raise ValueError("`src` must be either string or file-like object.")
+            raise ValueError("`src` must be either string, Tensor or file-like object.")
 
         i = self._be.find_best_audio_stream()
         self._default_audio_stream = None if i < 0 else i
@@ -424,13 +453,34 @@ class StreamReader:
         """
         return _parse_oi(self._be.get_out_stream_info(i))
 
-    def seek(self, timestamp: float):
+    def seek(self, timestamp: float, mode: str = "precise"):
         """Seek the stream to the given timestamp [second]
 
         Args:
             timestamp (float): Target time in second.
+            mode (str): Controls how seek is done.
+                Valid choices are;
+
+                * "key": Seek into the nearest key frame before the given timestamp.
+                * "any": Seek into any frame (including non-key frames) before the given timestamp.
+                * "precise": First seek into the nearest key frame before the given timestamp, then
+                  decode frames until it reaches the closes frame to the given timestamp.
+
+                Note:
+                   All the modes invalidate and reset the internal state of decoder.
+                   When using "any" mode and if it ends up seeking into non-key frame,
+                   the image decoded may be invalid due to lack of key frame.
+                   Using "precise" will workaround this issue by decoding frames from previous
+                   key frame, but will be slower.
         """
-        self._be.seek(timestamp)
+        modes = {
+            "key": 0,
+            "any": 1,
+            "precise": 2,
+        }
+        if mode not in modes:
+            raise ValueError(f"The value of mode must be one of {list(modes.keys())}. Found: {mode}")
+        self._be.seek(timestamp, modes[mode])
 
     @_format_audio_args
     def add_basic_audio_stream(
@@ -708,8 +758,15 @@ class StreamReader:
         """
         return self._be.pop_chunks()
 
-    def _fill_buffer(self, timeout: Optional[float], backoff: float) -> int:
+    def fill_buffer(self, timeout: Optional[float] = None, backoff: float = 10.0) -> int:
         """Keep processing packets until all buffers have at least one chunk
+
+        Arguments:
+            timeout (float or None, optional): See
+                :py:func:`~StreamReader.process_packet`. (Default: ``None``)
+
+            backoff (float, optional): See
+                :py:func:`~StreamReader.process_packet`. (Default: ``10.0``)
 
         Returns:
             int:
@@ -722,11 +779,7 @@ class StreamReader:
                 flushed the pending frames. The caller should stop calling
                 this method.
         """
-        while not self.is_buffer_ready():
-            code = self.process_packet(timeout, backoff)
-            if code != 0:
-                return code
-        return 0
+        return self._be.fill_buffer(timeout, backoff)
 
     def stream(
         self, timeout: Optional[float] = None, backoff: float = 10.0
@@ -752,7 +805,7 @@ class StreamReader:
             raise RuntimeError("No output stream is configured.")
 
         while True:
-            if self._fill_buffer(timeout, backoff):
+            if self.fill_buffer(timeout, backoff):
                 break
             yield self.pop_chunks()
 

@@ -163,15 +163,42 @@ bool StreamReader::is_buffer_ready() const {
 ////////////////////////////////////////////////////////////////////////////////
 // Configure methods
 ////////////////////////////////////////////////////////////////////////////////
-void StreamReader::seek(double timestamp) {
-  TORCH_CHECK(timestamp >= 0, "timestamp must be non-negative.");
+void StreamReader::seek(double timestamp_s, int64_t mode) {
+  TORCH_CHECK(timestamp_s >= 0, "timestamp must be non-negative.");
+  TORCH_CHECK(
+      pFormatContext->nb_streams > 0,
+      "At least one stream must exist in this context");
 
-  int64_t ts = static_cast<int64_t>(timestamp * AV_TIME_BASE);
-  int ret = avformat_seek_file(pFormatContext, -1, INT64_MIN, ts, INT64_MAX, 0);
-  TORCH_CHECK(ret >= 0, "Failed to seek. (" + av_err2string(ret) + ".)");
+  int64_t timestamp_av_tb = static_cast<int64_t>(timestamp_s * AV_TIME_BASE);
+
+  int flag = AVSEEK_FLAG_BACKWARD;
+  switch (mode) {
+    case 0:
+      // reset seek_timestap as it is only used for precise seek
+      seek_timestamp = 0;
+      break;
+    case 1:
+      flag |= AVSEEK_FLAG_ANY;
+      // reset seek_timestap as it is only used for precise seek
+      seek_timestamp = 0;
+      break;
+    case 2:
+      seek_timestamp = timestamp_av_tb;
+      break;
+    default:
+      TORCH_CHECK(false, "Invalid mode value: ", mode);
+  }
+
+  int ret = av_seek_frame(pFormatContext, -1, timestamp_av_tb, flag);
+
+  if (ret < 0) {
+    seek_timestamp = 0;
+    TORCH_CHECK(false, "Failed to seek. (" + av_err2string(ret) + ".)");
+  }
   for (const auto& it : processors) {
     if (it) {
       it->flush();
+      it->set_discard_timestamp(seek_timestamp);
     }
   }
 }
@@ -251,16 +278,12 @@ void StreamReader::add_stream(
 
   if (!processors[i]) {
     processors[i] = std::make_unique<StreamProcessor>(
-        stream->codecpar, decoder, decoder_option, device);
+        stream, decoder, decoder_option, device);
+    processors[i]->set_discard_timestamp(seek_timestamp);
   }
   stream->discard = AVDISCARD_DEFAULT;
   int key = processors[i]->add_stream(
-      stream->time_base,
-      stream->codecpar,
-      frames_per_chunk,
-      num_chunks,
-      filter_desc,
-      device);
+      frames_per_chunk, num_chunks, filter_desc, device);
   stream_indices.push_back(std::make_pair<>(i, key));
 }
 
@@ -306,7 +329,9 @@ int StreamReader::process_packet() {
   if (!processor) {
     return 0;
   }
+
   ret = processor->process_packet(packet);
+
   return (ret < 0) ? ret : 0;
 }
 

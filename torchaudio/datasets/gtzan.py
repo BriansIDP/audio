@@ -6,7 +6,7 @@ import torchaudio
 from torch import Tensor
 from torch.hub import download_url_to_file
 from torch.utils.data import Dataset
-from torchaudio.datasets.utils import extract_archive
+from torchaudio.datasets.utils import _extract_tar
 
 # The following lists prefixed with `filtered_` provide a filtered split
 # that:
@@ -996,11 +996,15 @@ def load_gtzan_item(fileid: str, path: str, ext_audio: str) -> Tuple[Tensor, str
 
 
 class GTZAN(Dataset):
-    """Create a Dataset for *GTZAN* [:footcite:`tzanetakis_essl_cook_2001`].
+    """*GTZAN* :cite:`tzanetakis_essl_cook_2001` dataset.
 
     Note:
         Please see http://marsyas.info/downloads/datasets.html if you are planning to use
         this dataset to publish results.
+
+    Note:
+        As of October 2022, the download link is not currently working. Setting ``download=True``
+        in GTZAN dataset will result in a URL connection error.
 
     Args:
         root (str or Path): Path to the directory where the dataset is found or downloaded.
@@ -1048,7 +1052,7 @@ class GTZAN(Dataset):
                 if not os.path.isfile(archive):
                     checksum = _CHECKSUMS.get(url, None)
                     download_url_to_file(url, archive, hash_prefix=checksum)
-                extract_archive(archive)
+                _extract_tar(archive)
 
         if not os.path.isdir(self._path):
             raise RuntimeError("Dataset not found. Please use `download=True` to download it.")
@@ -1096,7 +1100,14 @@ class GTZAN(Dataset):
             n (int): The index of the sample to be loaded
 
         Returns:
-            (Tensor, int, str): ``(waveform, sample_rate, label)``
+            Tuple of the following items;
+
+            Tensor:
+                Waveform
+            int:
+                Sample rate
+            str:
+                Label
         """
         fileid = self._walker[n]
         item = load_gtzan_item(fileid, self._path, self._ext_audio)

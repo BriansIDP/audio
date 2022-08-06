@@ -6,7 +6,7 @@ import torchaudio
 from torch import Tensor
 from torch.hub import download_url_to_file
 from torch.utils.data import Dataset
-from torchaudio.datasets.utils import extract_archive
+from torchaudio.datasets.utils import _extract_tar
 
 URL = "train-clean-100"
 FOLDER_IN_ARCHIVE = "LibriTTS"
@@ -63,7 +63,7 @@ def load_libritts_item(
 
 
 class LIBRITTS(Dataset):
-    """Create a Dataset for *LibriTTS* [:footcite:`Zen2019LibriTTSAC`].
+    """*LibriTTS* :cite:`Zen2019LibriTTSAC` dataset.
 
     Args:
         root (str or Path): Path to the directory where the dataset is found or downloaded.
@@ -121,7 +121,7 @@ class LIBRITTS(Dataset):
                 if not os.path.isfile(archive):
                     checksum = _CHECKSUMS.get(url, None)
                     download_url_to_file(url, archive, hash_prefix=checksum)
-                extract_archive(archive)
+                _extract_tar(archive)
         else:
             if not os.path.exists(self._path):
                 raise RuntimeError(
@@ -138,8 +138,22 @@ class LIBRITTS(Dataset):
             n (int): The index of the sample to be loaded
 
         Returns:
-            (Tensor, int, str, str, str, int, int, str):
-            ``(waveform, sample_rate, original_text, normalized_text, speaker_id, chapter_id, utterance_id)``
+            Tuple of the following items;
+
+            Tensor:
+                Waveform
+            int:
+                Sample rate
+            str:
+                Original text
+            str:
+                Normalized text
+            int:
+                Speaker ID
+            int:
+                Chapter ID
+            str:
+                Utterance ID
         """
         fileid = self._walker[n]
         return load_libritts_item(
