@@ -170,9 +170,9 @@ class RNNTBeamSearchBiasing(torch.nn.Module):
             torch.tensor([1] * len(hypos), device=device),
             hptr=hptr,
         )  # [beam_width, 1, 1, num_tokens]
-        if self.dobiasing:
+        if self.dobiasing and tcpgen_dist is not None:
             p_gen = torch.sigmoid(self.model.pointer_gate(torch.cat((joined_activation, hptr), dim=-1)))
-            p_gen = p_gen.masked_fill(genprob_masks.view(p_gen.size(0), 1, 1, 1), 0)
+            p_gen = p_gen.masked_fill(genprob_masks.view(p_gen.size(0), 1, 1, 1), 0) # * self.model.scaling
             model_tu = torch.softmax(joined_out / self.temperature, dim=3)
             # assuming last token is blank
             p_not_null = 1.0 - model_tu[:, :, :, -1:]

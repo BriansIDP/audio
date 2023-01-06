@@ -70,8 +70,8 @@ def run_cli():
     args = parse_args()
 
     root = args.librispeech_path / "LibriSpeech"
-    # splits = ["train-clean-100", "train-clean-360", "train-other-500"]
-    splits = ["train-clean-100"]
+    splits = ["train-clean-100", "train-clean-360", "train-other-500"]
+    # splits = ["train-clean-100"]
     merged_transcripts = []
     for split in splits:
         path = pathlib.Path(root) / split

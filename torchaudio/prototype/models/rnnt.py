@@ -194,6 +194,7 @@ class RNNTBiasing(RNNT):
                 self.pointer_gate = torch.nn.Linear(self.attndim + self.jointdim, 1)
         self.dropout_tcpgen = torch.nn.Dropout(dropout_tcpgen)
         self.tcpsche = tcpsche
+        self.scaling = 1.0
 
     def forward(
         self,
@@ -292,9 +293,9 @@ class RNNTBiasing(RNNT):
         if self.biasing and hptr is not None and tcpgen_dist is not None:
             p_gen = torch.sigmoid(self.pointer_gate(torch.cat((jointer_activation, hptr), dim=-1)))
             # avoid collapsing to ooKB token in the first few updates
-            # if current_epoch == self.tcpsche:
-            #     p_gen = p_gen * 0.1
-            p_gen = p_gen.masked_fill(p_gen_mask.bool().unsqueeze(1).unsqueeze(-1), 0)
+            # if current_epoch <= self.tcpsche + 10:
+            #     p_gen = p_gen * 0.5
+            p_gen = p_gen.masked_fill(p_gen_mask.bool().unsqueeze(1).unsqueeze(-1), 0) * self.scaling
 
         return (output, source_lengths, target_lengths, predictor_state, tcpgen_dist, p_gen)
 
@@ -354,7 +355,7 @@ class RNNTBiasing(RNNT):
                 # In this implementation, if not masking ooKB, ooKB probability
                 # would quickly collapse to 1.0 in the first few updates.
                 # Haven't found out why this happened.
-                # batch_masks[i, j, -1] = 0
+                batch_masks[i, j, -1] = 0
             p_gen_masks.append(p_gen_mask + [1] * (seqlen - len(p_gen_mask)))
         p_gen_masks = torch.Tensor(p_gen_masks).to(yseqs.device).byte()
         return batch_masks, p_gen_masks
