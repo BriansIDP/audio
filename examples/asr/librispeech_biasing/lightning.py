@@ -76,7 +76,7 @@ def post_process_hypos(
 
 
 class ConformerRNNTModule(LightningModule):
-    def __init__(self, sp_model, biasing=False):
+    def __init__(self, sp_model, biasing=False, treetype=""):
         super().__init__()
 
         self.sp_model = sp_model
@@ -94,7 +94,7 @@ class ConformerRNNTModule(LightningModule):
         # ``conformer_rnnt_biasing_base`` hardcodes a specific Conformer RNN-T configuration.
         # For greater customizability, please refer to ``conformer_rnnt_biasing``.
         self.biasing = biasing
-        self.model = conformer_rnnt_biasing_base(charlist=self.char_list, biasing=self.biasing)
+        self.model = conformer_rnnt_biasing_base(charlist=self.char_list, biasing=self.biasing, treetype=treetype)
         self.loss = torchaudio.transforms.RNNTLoss(reduction="sum", fused_log_softmax=False)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=8e-4, betas=(0.9, 0.98), eps=1e-9)
         # This scheduler is for clean 100 and train 90 epochs, should change it when running longer

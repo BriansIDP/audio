@@ -136,7 +136,7 @@ class RNNTBeamSearchBiasing(torch.nn.Module):
     def _get_trie_mask(self, trie):
         step_mask = torch.ones(len(self.model.char_list) + 1)
         step_mask[list(trie[0].keys())] = 0
-        # step_mask[-1] = 0
+        step_mask[-1] = 0
         return step_mask
 
     def _get_generation_prob(self, trie):
@@ -172,7 +172,7 @@ class RNNTBeamSearchBiasing(torch.nn.Module):
         )  # [beam_width, 1, 1, num_tokens]
         if self.dobiasing and tcpgen_dist is not None:
             p_gen = torch.sigmoid(self.model.pointer_gate(torch.cat((joined_activation, hptr), dim=-1)))
-            p_gen = p_gen.masked_fill(genprob_masks.view(p_gen.size(0), 1, 1, 1), 0) # * self.model.scaling
+            p_gen = p_gen.masked_fill(genprob_masks.view(p_gen.size(0), 1, 1, 1), 0)
             model_tu = torch.softmax(joined_out / self.temperature, dim=3)
             # assuming last token is blank
             p_not_null = 1.0 - model_tu[:, :, :, -1:]

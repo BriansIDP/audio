@@ -59,7 +59,7 @@ def run_train(args):
         )
 
     usebiasing = True if args.biasing == 'true' else False
-    model = ConformerRNNTModule(str(args.sp_model_path), usebiasing)
+    model = ConformerRNNTModule(str(args.sp_model_path), usebiasing, treetype=args.treetype)
     data_module = get_data_module(str(args.librispeech_path), str(args.global_stats_path), str(args.sp_model_path),
                                   subset=args.subset, biasinglist=args.biasinglist, droprate=args.droprate,
                                   maxsize=args.maxsize)
@@ -151,6 +151,12 @@ def cli_main():
         default='',
         type=str,
         help="Path to resume model.",
+    )
+    parser.add_argument(
+        "--treetype",
+        default='',
+        type=str,
+        help="GNN encoder type.",
     )
     args = parser.parse_args()
     run_train(args)

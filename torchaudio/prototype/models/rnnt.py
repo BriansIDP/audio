@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple
 import torch
 from torchaudio.models import Conformer, RNNT
 from torchaudio.models.rnnt import _Joiner, _Predictor, _TimeReduction, _Transcriber
+from .GNN import TreeRNN
 
 
 class _ConformerEncoder(torch.nn.Module, _Transcriber):
@@ -169,6 +170,7 @@ class RNNTBiasing(RNNT):
         dropout_tcpgen: float,
         tcpsche: int,
         DBaverage: bool,
+        treetype: str,
     ) -> None:
         super().__init__(transcriber, predictor, joiner)
         self.attndim = attndim
@@ -181,7 +183,11 @@ class RNNTBiasing(RNNT):
         self.nchars = len(charlist)
         self.DBaverage = DBaverage
         self.biasing = biasing
+        self.treetype = treetype
         if self.biasing:
+            if self.treetype == "treernn":
+                self.treernn = TreeRNN(self.embdim, self.embdim, dropout_tcpgen)
+                self.tree_hid = self.embdim
             if self.deepbiasing and self.DBaverage:
                 # Deep biasing without TCPGen
                 self.biasingemb = torch.nn.Linear(self.nchars, self.attndim, bias=False)
@@ -263,9 +269,16 @@ class RNNTBiasing(RNNT):
         # Forward TCPGen
         hptr = None
         tcpgen_dist, p_gen = None, None
+        step_embs_list, back_transform = None, None
         if self.biasing and current_epoch >= self.tcpsche and tries != []:
-            ptrdist_mask, p_gen_mask = self.get_tcpgen_step_masks(targets, tries)
-            hptr, tcpgen_dist = self.forward_tcpgen(targets, ptrdist_mask, source_encodings)
+            if self.treetype == "treernn":
+                self.treernn.get_lextree_encs(self.predictor.embedding, tries)
+                ptrdist_mask, p_gen_mask, step_embs_list, back_transform = self.get_tcpgen_gnn_step_masks(
+                    targets, tries)
+            else:
+                ptrdist_mask, p_gen_mask = self.get_tcpgen_step_masks(targets, tries)
+            hptr, tcpgen_dist = self.forward_tcpgen(
+                targets, ptrdist_mask, source_encodings, keyvalues=step_embs_list, back_transform=back_transform)
             hptr = self.dropout_tcpgen(hptr)
         elif self.biasing:
             # Hack here to bypass unused parameters
@@ -293,9 +306,9 @@ class RNNTBiasing(RNNT):
         if self.biasing and hptr is not None and tcpgen_dist is not None:
             p_gen = torch.sigmoid(self.pointer_gate(torch.cat((jointer_activation, hptr), dim=-1)))
             # avoid collapsing to ooKB token in the first few updates
-            # if current_epoch <= self.tcpsche + 10:
-            #     p_gen = p_gen * 0.5
-            p_gen = p_gen.masked_fill(p_gen_mask.bool().unsqueeze(1).unsqueeze(-1), 0) * self.scaling
+            if current_epoch >= self.tcpsche:
+                p_gen = p_gen * (1 - math.exp(-(current_epoch - self.tcpsche) / 1))
+            p_gen = p_gen.masked_fill(p_gen_mask.bool().unsqueeze(1).unsqueeze(-1), 0)
 
         return (output, source_lengths, target_lengths, predictor_state, tcpgen_dist, p_gen)
 
@@ -313,7 +326,23 @@ class RNNTBiasing(RNNT):
         hptr = torch.einsum("ntui,ij->ntuj", tcpgendist[:, :, :, :-1], keyvalues[:-1, :])
         return hptr, tcpgendist
 
-    def forward_tcpgen(self, targets, ptrdist_mask, source_encodings):
+    def get_tcpgen_distribution_gnn(self, query, ptrdist_mask, keyvalues, back_transform):
+        keyvalues = self.dropout_tcpgen(self.Kproj(keyvalues))
+        # B * T * U * attndim, B * U * maxnbpe * attndim -> B * T * U * maxnbpe
+        tcpgendist = torch.einsum("ntuj,nuij->ntui", query, keyvalues)
+        tcpgendist = tcpgendist / math.sqrt(query.size(-1))
+        ptrdist_mask = ptrdist_mask.unsqueeze(1).repeat(1, tcpgendist.size(1), 1, 1)
+        tcpgendist.masked_fill_(ptrdist_mask.bool(), -1e9)
+        tcpgendist = torch.nn.functional.softmax(tcpgendist, dim=-1)
+        # B * T * U * maxnbpe, B * T * maxnbpe * attndim -> B * T * U * attndim
+        if keyvalues.size(1) > 1:
+            hptr = torch.einsum("ntui,nuij->ntuj", tcpgendist[:, :, :, :-1], keyvalues[:, :, :-1, :])
+        else:
+            hptr = tcpgendist.new_zeros(query.size(0), query.size(1), query.size(2), keyvalues.size(-1))
+        tcpgendist = torch.einsum('nuim,ntui->ntum', back_transform, tcpgendist)
+        return hptr, tcpgendist
+
+    def forward_tcpgen(self, targets, ptrdist_mask, source_encodings, keyvalues=None, back_transform=None):
         tcpgen_dist = None
         if self.DBaverage and self.deepbiasing:
             hptr = self.biasingemb(1 - ptrdist_mask[:, :, :-1].float()).unsqueeze(1)
@@ -322,7 +351,10 @@ class RNNTBiasing(RNNT):
             query_char = self.Qproj_char(query_char).unsqueeze(1)  # B * 1 * U * attndim
             query_acoustic = self.Qproj_acoustic(source_encodings).unsqueeze(2)  # B * T * 1 * attndim
             query = query_char + query_acoustic  # B * T * U * attndim
-            hptr, tcpgen_dist = self.get_tcpgen_distribution(query, ptrdist_mask)
+            if self.treetype == "treernn" and back_transform is not None:
+                hptr, tcpgen_dist = self.get_tcpgen_distribution_gnn(query, ptrdist_mask, keyvalues, back_transform)
+            else:
+                hptr, tcpgen_dist = self.get_tcpgen_distribution(query, ptrdist_mask)
         return hptr, tcpgen_dist
 
     def get_tcpgen_step_masks(self, yseqs, resettrie):
@@ -359,6 +391,66 @@ class RNNTBiasing(RNNT):
             p_gen_masks.append(p_gen_mask + [1] * (seqlen - len(p_gen_mask)))
         p_gen_masks = torch.Tensor(p_gen_masks).to(yseqs.device).byte()
         return batch_masks, p_gen_masks
+
+    def get_tcpgen_gnn_step_masks(self, yseqs, resettrie):
+        seqlen = len(yseqs[0])
+        ooKB_id = len(self.char_list)
+        maxlen = 0
+        p_gen_masks = []
+        index_lists = []
+        step_embs_list = []
+        for i, yseq in enumerate(yseqs):
+            new_tree = resettrie
+            p_gen_mask = []
+            step_embs = []
+            index_list = []
+            for j, vy in enumerate(yseq):
+                vy = vy.item()
+                new_tree = new_tree[0]
+                if vy in [self.blank_idx]:
+                    new_tree = resettrie
+                    p_gen_mask.append(0)
+                elif self.char_list[vy].endswith("▁"):
+                    if vy in new_tree and new_tree[vy][0] != {}:
+                        new_tree = new_tree[vy]
+                    else:
+                        new_tree = resettrie
+                    p_gen_mask.append(0)
+                elif vy not in new_tree:
+                    new_tree = [{}]
+                    p_gen_mask.append(1)
+                else:
+                    new_tree = new_tree[vy]
+                    p_gen_mask.append(0)
+                if len(new_tree[0].keys()) > maxlen:
+                    maxlen = len(new_tree[0].keys())
+                index_list.append(list(new_tree[0].keys()))
+                if len(new_tree) > 2:
+                    step_embs.append(torch.cat([node[3] for key, node in new_tree[0].items()], dim=0))
+                else:
+                    step_embs.append(torch.empty(0, self.tree_hid).to(yseqs.device))
+            index_lists.append(index_list)
+            step_embs_list.append(step_embs)
+            p_gen_masks.append(p_gen_mask + [1] * (seqlen - len(p_gen_mask)))
+        maxlen += 1
+        step_masks = []
+        back_transform = torch.zeros(yseqs.size(0), yseqs.size(1), maxlen, ooKB_id+1).to(yseqs.device)
+        ones_mat = torch.ones(back_transform.size()).to(yseqs.device)
+        for n, index_list in enumerate(index_lists):
+            step_mask = []
+            for i, indices in enumerate(index_list):
+                step_mask.append(len(indices) * [0] + (maxlen - len(indices) - 1) * [1] + [0])
+                pad_embs = self.ooKBemb.weight.repeat(maxlen-len(indices), 1)
+                indices += [ooKB_id] * (maxlen-len(indices))
+                step_embs_list[n][i] = torch.cat([step_embs_list[n][i], pad_embs], dim=0)
+            step_embs_list[n] = torch.stack(step_embs_list[n])
+            step_masks.append(step_mask)
+        step_masks = torch.tensor(step_masks).byte().to(yseqs.device)
+        index_lists = torch.LongTensor(index_lists).to(yseqs.device)
+        back_transform.scatter_(dim=-1, index=index_lists.unsqueeze(-1), src=ones_mat)
+        step_embs_list = torch.stack(step_embs_list)
+        p_gen_masks = torch.Tensor(p_gen_masks).to(yseqs.device).byte()
+        return step_masks, p_gen_masks, step_embs_list, back_transform
 
     def get_tcpgen_step_masks_prefix(self, yseqs, resettrie):
         # Implemented for prefix-based wordpieces, not tested yet
@@ -585,6 +677,7 @@ def conformer_rnnt_biasing(
     deepbiasing: bool,
     tcpsche: int,
     DBaverage: bool,
+    treetype: str,
 ) -> RNNTBiasing:
     r"""Builds Conformer-based recurrent neural network transducer (RNN-T) model.
 
@@ -662,10 +755,11 @@ def conformer_rnnt_biasing(
         conformer_dropout,
         tcpsche,
         DBaverage,
+        treetype,
     )
 
 
-def conformer_rnnt_biasing_base(charlist=[], biasing=True) -> RNNT:
+def conformer_rnnt_biasing_base(charlist=[], biasing=True, treetype="") -> RNNT:
     r"""Builds basic version of Conformer RNN-T model with TCPGen.
 
     Returns:
@@ -693,7 +787,8 @@ def conformer_rnnt_biasing_base(charlist=[], biasing=True) -> RNNT:
         attndim=256,
         biasing=biasing,
         charlist=charlist,
-        deepbiasing=False,
+        deepbiasing=True,
         tcpsche=30,
         DBaverage=False,
+        treetype=treetype,
     )

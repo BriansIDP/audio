@@ -17,6 +17,7 @@ from .hifi_gan import (
 )
 from .rnnt import conformer_rnnt_base, conformer_rnnt_biasing, conformer_rnnt_biasing_base, conformer_rnnt_model
 from .rnnt_decoder import Hypothesis, RNNTBeamSearchBiasing
+from .GNN import TreeRNN
 
 __all__ = [
     "conformer_rnnt_base",
@@ -42,4 +43,5 @@ __all__ = [
     "hifigan_generator",
     "Hypothesis",
     "RNNTBeamSearchBiasing",
+    "TreeRNN",
 ]

@@ -1,6 +1,6 @@
 . /home/gs534/rds/hpc-work/work/espnet/tools/anaconda/etc/profile.d/conda.sh && conda deactivate && conda activate cuda113
 export LD_PRELOAD=/lib64/libgsm.so
-expdir="./experiments/librispeech_clean100_suffix600_tcpgen200_sche30_drop0.1_smooth"
+expdir="./experiments/librispeech_clean100_suffix600_tcpgen200_deep_sche30_nodrop_smooth"
 mkdir -p $expdir
 python train.py \
     --exp-dir $expdir \
@@ -9,7 +9,8 @@ python train.py \
     --sp-model-path ./spm_unigram_600_100suffix.model \
     --biasing true \
     --biasinglist ./blists/rareword_f15.txt \
-    --droprate 0.1 \
+    --droprate 0.0 \
     --maxsize 200 \
     --epochs 90 \
-    --resume $expdir/checkpoints/epoch=50-step=99603.ckpt \
+    --treetype "" \
+    # --resume $expdir/checkpoints/epoch=85-step=167958-v1.ckpt \
