@@ -5,8 +5,8 @@ python train.py \
     --librispeech-path /home/gs534/rds/hpc-work/data/Librispeech/ \
     --global-stats-path ./global_stats_100.json \
     --sp-model-path ./spm_unigram_600_100suffix.model \
-    --biasing true \
-    --biasinglist ./blists/rareword_f15.txt \
+    --biasing \
+    --biasing-list ./blists/rareword_f15.txt \
     --droprate 0.1 \
     --maxsize 200 \
     --epochs 90 \
