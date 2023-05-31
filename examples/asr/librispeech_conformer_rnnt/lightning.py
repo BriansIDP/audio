@@ -8,7 +8,7 @@ import torch
 import torchaudio
 from pytorch_lightning import LightningModule
 from torchaudio.models import Hypothesis, RNNTBeamSearch
-from torchaudio.prototype.models import conformer_rnnt_base
+from torchaudio.prototype.models import conformer_rnnt_base, conformer_rnnt_model
 
 
 logger = logging.getLogger()
@@ -52,6 +52,38 @@ class WarmupLR(torch.optim.lr_scheduler._LRScheduler):
             scaling_factor = self.anneal_factor ** (self._step_count - self.force_anneal_step)
             return [scaling_factor * base_lr for base_lr in self.base_lrs]
 
+            # scaling_factor = self.anneal_factor ** ((self._step_count - self.force_anneal_step) * 0.3)
+            # return [scaling_factor * base_lr for base_lr in self.base_lrs]
+
+            # scaling_factor = 1.0 if self._step_count < 250 else 0.6
+            # return [2e-4 * scaling_factor for base_lr in self.base_lrs]
+
+
+class NoamLR(torch.optim.lr_scheduler._LRScheduler):
+    r"""
+    https://nn.labml.ai/optimizers/noam.html
+    https://github.com/espnet/espnet/blob/master/espnet/nets/pytorch_backend/transformer/optimizer.py
+    https://github.com/k2-fsa/icefall/blob/master/egs/librispeech/ASR/transducer_stateless/transformer.py
+    """
+
+    def __init__(
+        self,
+        optimizer: torch.optim.Optimizer,
+        warmup_steps: int,
+        model_size: int,
+        last_epoch=-1,
+        verbose=False,
+    ):
+        self.step_per_epoch = 3000
+        self.warmup_steps = warmup_steps * self.step_per_epoch
+        self.model_size = model_size
+        super().__init__(optimizer, last_epoch=last_epoch, verbose=verbose)
+
+    def get_lr(self):
+        scaling_factor = self.model_size ** (-0.5) \
+            * min((self._step_count * self.step_per_epoch) ** (-0.5), (self._step_count * self.step_per_epoch) * self.warmup_steps ** (-1.5))
+        return [scaling_factor * base_lr for base_lr in self.base_lrs]
+
 
 def post_process_hypos(
     hypos: List[Hypothesis], sp_model: spm.SentencePieceProcessor
@@ -75,8 +107,30 @@ def post_process_hypos(
     return nbest_batch
 
 
+def get_conformer_rnnt(config):
+    return conformer_rnnt_model(
+        input_dim=config["rnnt_config"]["input_dim"],
+        encoding_dim=config["rnnt_config"]["encoding_dim"],
+        time_reduction_stride=config["rnnt_config"]["time_reduction_stride"],
+        conformer_input_dim=config["rnnt_config"]["conformer_input_dim"],
+        conformer_ffn_dim=config["rnnt_config"]["conformer_ffn_dim"],
+        conformer_num_layers=config["rnnt_config"]["conformer_num_layers"],
+        conformer_num_heads=config["rnnt_config"]["conformer_num_heads"],
+        conformer_depthwise_conv_kernel_size=config["rnnt_config"]["conformer_depthwise_conv_kernel_size"],
+        conformer_dropout=config["rnnt_config"]["conformer_dropout"],
+        num_symbols=config["rnnt_config"]["num_symbols"],
+        symbol_embedding_dim=config["rnnt_config"]["symbol_embedding_dim"],
+        num_lstm_layers=config["rnnt_config"]["num_lstm_layers"],
+        lstm_hidden_dim=config["rnnt_config"]["lstm_hidden_dim"],
+        lstm_layer_norm=config["rnnt_config"]["lstm_layer_norm"],
+        lstm_layer_norm_epsilon=config["rnnt_config"]["lstm_layer_norm_epsilon"],
+        lstm_dropout=config["rnnt_config"]["lstm_dropout"],
+        joiner_activation=config["rnnt_config"]["joiner_activation"],
+    )
+
+
 class ConformerRNNTModule(LightningModule):
-    def __init__(self, sp_model):
+    def __init__(self, sp_model, config):
         super().__init__()
 
         self.sp_model = sp_model
@@ -86,14 +140,37 @@ class ConformerRNNTModule(LightningModule):
             f"vocabulary size {_expected_spm_vocab_size}, but the given SentencePiece model has a vocabulary size "
             f"of {spm_vocab_size}. Please provide a correctly configured SentencePiece model."
         )
+        assert spm_vocab_size == config["spm_vocab_size"]
         self.blank_idx = spm_vocab_size
+
+        self.config = config
 
         # ``conformer_rnnt_base`` hardcodes a specific Conformer RNN-T configuration.
         # For greater customizability, please refer to ``conformer_rnnt_model``.
-        self.model = conformer_rnnt_base()
-        self.loss = torchaudio.transforms.RNNTLoss(reduction="sum")
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=8e-4, betas=(0.9, 0.98), eps=1e-9)
-        self.warmup_lr_scheduler = WarmupLR(self.optimizer, 40, 120, 0.96)
+        self.model = get_conformer_rnnt(config)
+        self.loss = torchaudio.transforms.RNNTLoss(reduction=config["optim_config"]["reduction"])
+
+        # Default:
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(), 
+            lr=config["optim_config"]["lr"], 
+            betas=(0.9, 0.98), 
+            eps=1e-9, 
+            weight_decay=config["optim_config"]["weight_decay"]
+        )
+        self.warmup_lr_scheduler = WarmupLR(
+            self.optimizer, 
+            config["optim_config"]["warmup_steps"], 
+            config["optim_config"]["force_anneal_step"], 
+            config["optim_config"]["anneal_factor"]
+        )
+
+        # # Noam:
+        # self.optimizer = torch.optim.Adam(self.model.parameters(), lr=5.0, betas=(0.9, 0.98), eps=1e-9, weight_decay=0)
+        # self.warmup_lr_scheduler = NoamLR(self.optimizer, warmup_steps=30, model_size=512)
+
+        self._total_loss = 0
+        self._total_frames = 0
 
     def _step(self, batch, _, step_type):
         if batch is None:
@@ -111,6 +188,14 @@ class ConformerRNNTModule(LightningModule):
         )
         loss = self.loss(output, batch.targets, src_lengths, batch.target_lengths)
         self.log(f"Losses/{step_type}_loss", loss, on_step=True, on_epoch=True)
+
+        subsampling_factor = self.config["rnnt_config"]["time_reduction_stride"]
+        num_frames = (batch.feature_lengths // subsampling_factor).sum().item()
+        # https://github.com/k2-fsa/icefall/blob/master/egs/librispeech/ASR/conformer_ctc2/train.py#L699
+        reset_interval = 200
+        self._total_loss = (self._total_loss * (1 - 1 / reset_interval)) + loss.item()
+        self._total_frames = (self._total_frames * (1 - 1 / reset_interval)) + num_frames
+        self.log(f"Losses_normalized/{step_type}_loss", self._total_loss / self._total_frames, on_step=True, on_epoch=True)
 
         return loss
 
