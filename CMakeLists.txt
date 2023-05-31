@@ -56,7 +56,8 @@ option(BUILD_SOX "Build libsox statically" ON)
 option(BUILD_KALDI "Build kaldi statically" ON)
 option(BUILD_RIR "Enable RIR simulation" ON)
 option(BUILD_RNNT "Enable RNN transducer" ON)
-option(BUILD_CTC_DECODER "Build Flashlight CTC decoder" ON)
+option(BUILD_ALIGN "Enable forced alignment" ON)
+option(BUILD_CUDA_CTC_DECODER "Build CUCTC decoder" OFF)
 option(BUILD_TORCHAUDIO_PYTHON_EXTENSION "Build Python extension" OFF)
 option(USE_FFMPEG "Enable ffmpeg-based features" OFF)
 option(USE_CUDA "Enable CUDA support" OFF)
@@ -80,6 +81,14 @@ endif()
 
 if(USE_CUDA)
   enable_language(CUDA)
+  set(
+    CMAKE_CUDA_FLAGS
+    "${CMAKE_CUDA_FLAGS} \
+    -DCUDA_HAS_FP16=1 \
+    -D__CUDA_NO_HALF_OPERATORS__ \
+    -D__CUDA_NO_HALF_CONVERSIONS__ \
+    -D__CUDA_NO_HALF2_OPERATORS__"
+  )
 endif()
 
 include(cmake/TorchAudioHelper.cmake)
@@ -108,7 +117,16 @@ if(MSVC)
       unsigned_compare_with_zero
       declared_but_not_referenced
       bad_friend_decl)
-      string(APPEND CMAKE_CUDA_FLAGS " -Xcudafe --diag_suppress=${diag}")
+      string(
+        APPEND
+        CMAKE_CUDA_FLAGS
+        " -Xcudafe \
+        --diag_suppress=${diag} \
+        -DCUDA_HAS_FP16=1 \
+        -D__CUDA_NO_HALF_OPERATORS__ \
+        -D__CUDA_NO_HALF_CONVERSIONS__ \
+        -D__CUDA_NO_HALF2_OPERATORS__"
+      )
     endforeach()
     CUDA_CONVERT_FLAGS(torch_cpu)
     if(TARGET torch_cuda)
@@ -155,4 +173,10 @@ if (BUILD_SOX)
 endif()
 if (USE_FFMPEG)
   add_subdirectory(torchaudio/csrc/ffmpeg)
+endif()
+if (BUILD_CUDA_CTC_DECODER)
+  if (NOT USE_CUDA)
+    message(FATAL "BUILD_CUDA_CTC_DECODER=1 but USE_CUDA=0.")
+  endif()
+  add_subdirectory(torchaudio/csrc/cuctc)
 endif()

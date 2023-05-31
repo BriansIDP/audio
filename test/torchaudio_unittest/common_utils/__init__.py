@@ -1,14 +1,18 @@
+from .autograd_utils import use_deterministic_algorithms
 from .backend_utils import set_audio_backend
 from .case_utils import (
+    disabledInCI,
     HttpServerMixin,
     is_ffmpeg_available,
     PytorchTestCase,
     skipIfCudaSmallMemory,
     skipIfNoAudioDevice,
     skipIfNoCtcDecoder,
+    skipIfNoCuCtcDecoder,
     skipIfNoCuda,
     skipIfNoExec,
     skipIfNoFFmpeg,
+    skipIfNoHWAccel,
     skipIfNoKaldi,
     skipIfNoMacOS,
     skipIfNoModule,
@@ -42,6 +46,7 @@ __all__ = [
     "is_ffmpeg_available",
     "skipIfNoAudioDevice",
     "skipIfNoCtcDecoder",
+    "skipIfNoCuCtcDecoder",
     "skipIfNoCuda",
     "skipIfCudaSmallMemory",
     "skipIfNoExec",
@@ -54,7 +59,9 @@ __all__ = [
     "skipIfRocm",
     "skipIfNoQengine",
     "skipIfNoFFmpeg",
+    "skipIfNoHWAccel",
     "skipIfPy310",
+    "disabledInCI",
     "get_wav_data",
     "normalize_wav",
     "load_wav",
@@ -66,5 +73,6 @@ __all__ = [
     "get_image",
     "rgb_to_gray",
     "rgb_to_yuv_ccir",
+    "use_deterministic_algorithms",
     "zip_equal",
 ]

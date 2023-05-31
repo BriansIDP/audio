@@ -5,7 +5,7 @@ unset PYTORCH_VERSION
 # so no need to set PYTORCH_VERSION.
 # In fact, keeping PYTORCH_VERSION forces us to hardcode PyTorch version in config.
 
-set -ex
+set -euxo pipefail
 
 root_dir="$(git rev-parse --show-toplevel)"
 conda_dir="${root_dir}/conda"
@@ -26,13 +26,7 @@ if [ -z "${CUDA_VERSION:-}" ] ; then
     version="cpu"
 else
     version="$(python -c "print('.'.join(\"${CUDA_VERSION}\".split('.')[:2]))")"
-
-    cuda_toolkit_pckg="cudatoolkit"
-    if [[ "$CU_VERSION" == cu116 || "$CU_VERSION" == cu117 || "$CU_VERSION" == cu118 ]]; then
-        cuda_toolkit_pckg="pytorch-cuda"
-    fi
-
-    cudatoolkit="${cuda_toolkit_pckg}=${version}"
+    cudatoolkit="pytorch-cuda=${version}"
 fi
 printf "Installing PyTorch with %s\n" "${cudatoolkit}"
 conda install -y -c "pytorch-${UPLOAD_CHANNEL}" -c nvidia pytorch "${cudatoolkit}"  pytest
@@ -49,6 +43,9 @@ if [ ! -z "${CUDA_VERSION:-}" ] ; then
 fi
 
 # 2. Install torchaudio
+printf "* Installing fsspec\n"
+pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org fsspec
+
 printf "* Installing torchaudio\n"
 "$root_dir/packaging/vc_env_helper.bat" python setup.py install
 
@@ -70,8 +67,7 @@ case "$(python --version)" in
 esac
 # Note: installing librosa via pip fail because it will try to compile numba.
 (
-    set -x
-    conda install -y -c conda-forge ${NUMBA_DEV_CHANNEL} 'librosa>=0.8.0' parameterized 'requests>=2.20'
+    conda install -y -c conda-forge ${NUMBA_DEV_CHANNEL} 'librosa==0.10.0' parameterized 'requests>=2.20'
     # Need to disable shell check since this'll fail out if SENTENCEPIECE_DEPENDENCY is empty
     # shellcheck disable=SC2086
     pip install \
@@ -91,7 +87,9 @@ esac
         'protobuf<4.21.0' \
         demucs \
         tinytag \
-        pyroomacoustics
+        pyroomacoustics \
+        flashlight-text \
+        git+https://github.com/kpu/kenlm/
 )
 # Install fairseq
 git clone https://github.com/pytorch/fairseq

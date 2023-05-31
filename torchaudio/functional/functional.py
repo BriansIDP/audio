@@ -9,6 +9,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torchaudio
 from torch import Tensor
+from torchaudio._extension import fail_if_no_align
 
 from .filtering import highpass_biquad, treble_biquad
 
@@ -51,6 +52,7 @@ __all__ = [
     "speed",
     "preemphasis",
     "deemphasis",
+    "forced_align",
 ]
 
 
@@ -83,7 +85,7 @@ def spectrogram(
         hop_length (int): Length of hop between STFT windows
         win_length (int): Window size
         power (float or None): Exponent for the magnitude spectrogram,
-            (must be > 0) e.g., 1 for energy, 2 for power, etc.
+            (must be > 0) e.g., 1 for magnitude, 2 for power, etc.
             If None, then the complex spectrum is returned instead.
         normalized (bool or str): Whether to normalize by magnitude after stft. If input is str, choices are
             ``"window"`` and ``"frame_length"``, if specific normalization type is desirable. ``True`` maps to
@@ -286,7 +288,7 @@ def griffinlim(
             Default: ``win_length // 2``)
         win_length (int): Window size. (Default: ``n_fft``)
         power (float): Exponent for the magnitude spectrogram,
-            (must be > 0) e.g., 1 for energy, 2 for power, etc.
+            (must be > 0) e.g., 1 for magnitude, 2 for power, etc.
         n_iter (int): Number of iteration for phase recovery process.
         momentum (float): The momentum parameter for fast Griffin-Lim.
             Setting this to 0 recovers the original Griffin-Lim method.
@@ -825,18 +827,25 @@ def mask_along_axis_iid(
     ``max_v = min(mask_param, floor(specgrams.size(axis) * p))`` otherwise.
 
     Args:
-        specgrams (Tensor): Real spectrograms `(batch, channel, freq, time)`
+        specgrams (Tensor): Real spectrograms `(..., freq, time)`, with at least 3 dimensions.
         mask_param (int): Number of columns to be masked will be uniformly sampled from [0, mask_param]
         mask_value (float): Value to assign to the masked columns
-        axis (int): Axis to apply masking on (2 -> frequency, 3 -> time)
+        axis (int): Axis to apply masking on, which should be the one of the last two dimensions.
         p (float, optional): maximum proportion of columns that can be masked. (Default: 1.0)
 
     Returns:
-        Tensor: Masked spectrograms of dimensions `(batch, channel, freq, time)`
+        Tensor: Masked spectrograms with the same dimensions as input specgrams Tensor`
     """
 
-    if axis not in [2, 3]:
-        raise ValueError("Only Frequency and Time masking are supported")
+    dim = specgrams.dim()
+
+    if dim < 3:
+        raise ValueError(f"Spectrogram must have at least three dimensions ({dim} given).")
+
+    if axis not in [dim - 2, dim - 1]:
+        raise ValueError(
+            f"Only Frequency and Time masking are supported (axis {dim-2} and axis {dim-1} supported; {axis} given)."
+        )
 
     if not 0.0 <= p <= 1.0:
         raise ValueError(f"The value of p must be between 0.0 and 1.0 ({p} given).")
@@ -848,8 +857,8 @@ def mask_along_axis_iid(
     device = specgrams.device
     dtype = specgrams.dtype
 
-    value = torch.rand(specgrams.shape[:2], device=device, dtype=dtype) * mask_param
-    min_value = torch.rand(specgrams.shape[:2], device=device, dtype=dtype) * (specgrams.size(axis) - value)
+    value = torch.rand(specgrams.shape[: (dim - 2)], device=device, dtype=dtype) * mask_param
+    min_value = torch.rand(specgrams.shape[: (dim - 2)], device=device, dtype=dtype) * (specgrams.size(axis) - value)
 
     # Create broadcastable mask
     mask_start = min_value.long()[..., None, None]
@@ -879,24 +888,31 @@ def mask_along_axis(
 
     Mask will be applied from indices ``[v_0, v_0 + v)``,
     where ``v`` is sampled from ``uniform(0, max_v)`` and
-    ``v_0`` from ``uniform(0, specgrams.size(axis) - v)``, with
+    ``v_0`` from ``uniform(0, specgram.size(axis) - v)``, with
     ``max_v = mask_param`` when ``p = 1.0`` and
-    ``max_v = min(mask_param, floor(specgrams.size(axis) * p))``
+    ``max_v = min(mask_param, floor(specgram.size(axis) * p))``
     otherwise.
     All examples will have the same mask interval.
 
     Args:
-        specgram (Tensor): Real spectrogram `(channel, freq, time)`
+        specgram (Tensor): Real spectrograms `(..., freq, time)`, with at least 2 dimensions.
         mask_param (int): Number of columns to be masked will be uniformly sampled from [0, mask_param]
         mask_value (float): Value to assign to the masked columns
-        axis (int): Axis to apply masking on (1 -> frequency, 2 -> time)
+        axis (int): Axis to apply masking on, which should be the one of the last two dimensions.
         p (float, optional): maximum proportion of columns that can be masked. (Default: 1.0)
 
     Returns:
-        Tensor: Masked spectrogram of dimensions `(channel, freq, time)`
+        Tensor: Masked spectrograms with the same dimensions as input specgram Tensor
     """
-    if axis not in [1, 2]:
-        raise ValueError("Only Frequency and Time masking are supported")
+    dim = specgram.dim()
+
+    if dim < 2:
+        raise ValueError(f"Spectrogram must have at least two dimensions (time and frequency) ({dim} given).")
+
+    if axis not in [dim - 2, dim - 1]:
+        raise ValueError(
+            f"Only Frequency and Time masking are supported (axis {dim-2} and axis {dim-1} supported; {axis} given)."
+        )
 
     if not 0.0 <= p <= 1.0:
         raise ValueError(f"The value of p must be between 0.0 and 1.0 ({p} given).")
@@ -908,14 +924,17 @@ def mask_along_axis(
     # pack batch
     shape = specgram.size()
     specgram = specgram.reshape([-1] + list(shape[-2:]))
+    # After packing, specgram is a 3D tensor, and the axis corresponding to the to-be-masked dimension
+    # is now (axis - dim + 3), e.g. a tensor of shape (10, 2, 50, 10, 2) becomes a tensor of shape (1000, 10, 2).
     value = torch.rand(1) * mask_param
-    min_value = torch.rand(1) * (specgram.size(axis) - value)
+    min_value = torch.rand(1) * (specgram.size(axis - dim + 3) - value)
 
     mask_start = (min_value.long()).squeeze()
     mask_end = (min_value.long() + value.long()).squeeze()
-    mask = torch.arange(0, specgram.shape[axis], device=specgram.device, dtype=specgram.dtype)
+    mask = torch.arange(0, specgram.shape[axis - dim + 3], device=specgram.device, dtype=specgram.dtype)
     mask = (mask >= mask_start) & (mask < mask_end)
-    if axis == 1:
+    # unsqueeze the mask if the axis is frequency
+    if axis == dim - 2:
         mask = mask.unsqueeze(-1)
 
     if mask_end - mask_start >= mask_param:
@@ -1439,7 +1458,6 @@ def _get_sinc_resample_kernel(
     device: torch.device = torch.device("cpu"),
     dtype: Optional[torch.dtype] = None,
 ):
-
     if not (int(orig_freq) == orig_freq and int(new_freq) == new_freq):
         raise Exception(
             "Frequencies must be of integer type to ensure quality resampling computation. "
@@ -2580,3 +2598,51 @@ def deemphasis(waveform, coeff: float = 0.97) -> torch.Tensor:
     a_coeffs = torch.tensor([1.0, -coeff], dtype=waveform.dtype, device=waveform.device)
     b_coeffs = torch.tensor([1.0, 0.0], dtype=waveform.dtype, device=waveform.device)
     return torchaudio.functional.lfilter(waveform, a_coeffs=a_coeffs, b_coeffs=b_coeffs)
+
+
+@fail_if_no_align
+def forced_align(
+    log_probs: torch.Tensor,
+    targets: torch.Tensor,
+    input_lengths: torch.Tensor,
+    target_lengths: torch.Tensor,
+    blank: int = 0,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Computes forced alignment given the emissions from a CTC-trained model and a target label.
+
+    .. devices:: CPU CUDA
+
+    .. properties:: TorchScript
+
+    Args:
+        log_probs (torch.Tensor): log probability of CTC emission output.
+            Tensor of shape `(T, C)`. where `T` is the input length,
+            `C` is the number of characters in alphabet including blank.
+        targets (torch.Tensor): Target sequence. Tensor of shape `(L,)`,
+            where `L` is the target length.
+        input_lengths (torch.Tensor): Lengths of the inputs (max value must each be <= `T`). 0-D Tensor (scalar).
+        target_lengths (torch.Tensor): Lengths of the targets. 0-D Tensor (scalar).
+        blank_id (int, optional): The index of blank symbol in CTC emission. (Default: 0)
+
+    Returns:
+        Tuple(torch.Tensor, torch.Tensor):
+            torch.Tensor: Label for each time step in the alignment path computed using forced alignment.
+
+            torch.Tensor: Log probability scores of the labels for each time step.
+
+    Note:
+        The sequence length of `log_probs` must satisfy:
+
+
+        .. math::
+            L_{\text{log\_probs}} \ge L_{\text{label}} + N_{\text{repeat}}
+
+        where :math:`N_{\text{repeat}}` is the number of consecutively repeated tokens.
+        For example, in str `"aabbc"`, the number of repeats are `2`.
+    """
+    if blank in targets:
+        raise ValueError(f"targets Tensor shouldn't contain blank index. Found {targets}.")
+    if torch.max(targets) >= log_probs.shape[-1]:
+        raise ValueError("targets values must be less than the CTC dimension")
+    paths, scores = torch.ops.torchaudio.forced_align(log_probs, targets, input_lengths, target_lengths, blank)
+    return paths, scores
