@@ -45,7 +45,7 @@ def train_spm(input, suffix=False):
 
 
 def parse_args():
-    default_output_path = "./spm_unigram_600_100suffix.model"
+    default_output_path = "./spm_unigram_600_suffix_full.model"
     parser = ArgumentParser(description=__doc__, formatter_class=RawTextHelpFormatter)
     parser.add_argument(
         "--librispeech-path",
@@ -72,8 +72,8 @@ def run_cli():
 
     root = args.librispeech_path / "LibriSpeech"
     # Uncomment this for running bpe on full 960-hour data
-    # splits = ["train-clean-100", "train-clean-360", "train-other-500"]
-    splits = ["train-clean-100"]
+    splits = ["train-clean-100", "train-clean-360", "train-other-500"]
+    # splits = ["train-clean-100"]
     merged_transcripts = []
     for split in splits:
         path = pathlib.Path(root) / split

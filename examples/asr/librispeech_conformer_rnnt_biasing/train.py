@@ -123,7 +123,7 @@ def cli_main():
     )
     parser.add_argument(
         "--subset",
-        default="train-clean-100",
+        default=None,
         type=str,
         help="Train on subset of librispeech.",
     )
@@ -136,7 +136,6 @@ def cli_main():
         "--biasing-list",
         type=pathlib.Path,
         help="Path to the biasing list.",
-        required=True,
     )
     parser.add_argument("--maxsize", default=1000, type=int, help="Size of biasing lists")
     parser.add_argument("--droprate", default=0.0, type=float, help="Biasing component regularisation drop rate")

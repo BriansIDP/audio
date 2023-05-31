@@ -113,7 +113,7 @@ def cli_main():
     )
     parser.add_argument(
         "--biasing",
-        type=str,
+        action="store_true",
         help="Use biasing",
     )
     args = parser.parse_args()

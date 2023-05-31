@@ -52,6 +52,31 @@ class WarmupLR(torch.optim.lr_scheduler._LRScheduler):
             return [scaling_factor * base_lr for base_lr in self.base_lrs]
 
 
+class NoamLR(torch.optim.lr_scheduler._LRScheduler):
+    r"""
+    https://nn.labml.ai/optimizers/noam.html
+    https://github.com/espnet/espnet/blob/master/espnet/nets/pytorch_backend/transformer/optimizer.py
+    https://github.com/k2-fsa/icefall/blob/master/egs/librispeech/ASR/transducer_stateless/transformer.py
+    """
+
+    def __init__(
+        self,
+        optimizer: torch.optim.Optimizer,
+        warmup_steps: int,
+        model_size: int,
+        last_epoch=-1,
+        verbose=False,
+    ):
+        self.warmup_steps = warmup_steps
+        self.model_size = model_size
+        super().__init__(optimizer, last_epoch=last_epoch, verbose=verbose)
+
+    def get_lr(self):
+        scaling_factor = self.model_size ** (-0.5) \
+            * min(self._step_count ** (-0.5), self._step_count * self.warmup_steps ** (-1.5))
+        return [scaling_factor * base_lr for base_lr in self.base_lrs]
+
+
 def post_process_hypos(
     hypos: List[Hypothesis], sp_model: spm.SentencePieceProcessor
 ) -> List[Tuple[str, float, List[int], List[int]]]:
@@ -95,9 +120,11 @@ class ConformerRNNTModule(LightningModule):
         self.biasing = biasing
         self.model = conformer_rnnt_biasing_base(charlist=self.char_list, biasing=self.biasing)
         self.loss = torchaudio.transforms.RNNTLoss(reduction="sum", fused_log_softmax=False)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=8e-4, betas=(0.9, 0.98), eps=1e-9)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=5.0, betas=(0.9, 0.98), eps=1e-9)
         # This scheduler is for clean 100 and train 90 epochs, should change it when running longer
-        self.warmup_lr_scheduler = WarmupLR(self.optimizer, 35, 60, 0.92)
+        # self.warmup_lr_scheduler = WarmupLR(self.optimizer, 20, 60, 0.93)
+        # self.warmup_lr_scheduler = WarmupLR(self.optimizer, 50000, 140000, 0.99995)
+        self.warmup_lr_scheduler = NoamLR(self.optimizer, warmup_steps=25000, model_size=1024)
         # The epoch from which the TCPGen starts to train
         self.tcpsche = self.model.tcpsche
 
@@ -144,7 +171,7 @@ class ConformerRNNTModule(LightningModule):
     def configure_optimizers(self):
         return (
             [self.optimizer],
-            [{"scheduler": self.warmup_lr_scheduler, "interval": "epoch"}],
+            [{"scheduler": self.warmup_lr_scheduler, "interval": "step"}],
         )
 
     def forward(self, batch: Batch):
@@ -173,8 +200,11 @@ class ConformerRNNTModule(LightningModule):
         variable-length sequential data commonly yields.
         """
 
+        # TODO: Hard coded gradient accum here
+        accumstep = 5
         opt = self.optimizers()
-        opt.zero_grad()
+        if batch_idx % accumstep == 0 and batch_idx != 0:
+            opt.zero_grad()
         loss = self._step(batch, batch_idx, "train")
         batch_size = batch.features.size(0)
         batch_sizes = self.all_gather(batch_size)
@@ -185,15 +215,18 @@ class ConformerRNNTModule(LightningModule):
             on_epoch=True,
             batch_size=batch.targets.size(0),
         )
-        loss *= batch_sizes.size(0) / batch_sizes.sum()  # world size / batch size
+        loss *= batch_sizes.size(0) / batch_sizes.sum() / accumstep # world size / batch size
         self.manual_backward(loss)
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 10.0)
-        opt.step()
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 5.0)
+        sch = self.lr_schedulers()
+        if batch_idx % accumstep == 0 and batch_idx != 0:
+            opt.step()
+            # step sch every step
+            sch.step()
 
         # step every epoch
-        sch = self.lr_schedulers()
-        if self.trainer.is_last_batch:
-            sch.step()
+        # if self.trainer.is_last_batch:
+        #     sch.step()
 
         return loss
 

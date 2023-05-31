@@ -127,7 +127,10 @@ class TrainTransform:
     def __call__(self, samples: List):
         features, feature_lengths = _extract_features(self.train_data_pipeline, samples)
         targets, target_lengths, biasingwords = _extract_labels(self.sp_model, samples)
-        tries, biasingwords = _extract_tries(self.sp_model, biasingwords, self.blist, self.droprate, self.maxsize)
+        if self.blist:
+            tries, biasingwords = _extract_tries(self.sp_model, biasingwords, self.blist, self.droprate, self.maxsize)
+        else:
+            tries = []
         return Batch(features, feature_lengths, targets, target_lengths, tries)
 
 
