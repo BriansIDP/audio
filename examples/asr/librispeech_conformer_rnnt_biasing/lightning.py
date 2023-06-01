@@ -101,7 +101,7 @@ def post_process_hypos(
 
 
 def get_conformer_rnnt_biasing(config, charlist, biasing=True):
-    return conformer_rnnt_model(
+    return conformer_rnnt_biasing(
         input_dim=config["rnnt_config"]["input_dim"],
         encoding_dim=config["rnnt_config"]["encoding_dim"],
         time_reduction_stride=config["rnnt_config"]["time_reduction_stride"],
@@ -144,6 +144,8 @@ class ConformerRNNTModule(LightningModule):
         self.blank_idx = spm_vocab_size
         self.char_list.append("<blank>")
 
+        self.config = config
+
         # ``conformer_rnnt_biasing_base`` hardcodes a specific Conformer RNN-T configuration.
         # For greater customizability, please refer to ``conformer_rnnt_biasing``.
         self.biasing = biasing
@@ -171,7 +173,6 @@ class ConformerRNNTModule(LightningModule):
         # The epoch from which the TCPGen starts to train
         self.tcpsche = self.model.tcpsche
 
-        self.automatic_optimization = False
         self._total_loss = 0
         self._total_frames = 0
 
@@ -209,7 +210,6 @@ class ConformerRNNTModule(LightningModule):
         else:
             logsmax_output = torch.log_softmax(output, dim=-1)
         loss = self.loss(logsmax_output, batch.targets, src_lengths, batch.target_lengths)
-        # self.log(f"Losses/{step_type}_loss", loss, on_step=True, on_epoch=True, batch_size=batch.targets.size(0))
         self.log(f"Losses/{step_type}_loss", loss, on_step=True, on_epoch=True)
 
         subsampling_factor = self.config["rnnt_config"]["time_reduction_stride"]

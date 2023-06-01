@@ -124,6 +124,12 @@ def cli_main():
         action="store_true",
         help="Use biasing",
     )
+    parser.add_argument(
+        "--train-config",
+        default=None,
+        type=pathlib.Path,
+        help="Path to config file.",
+    )
     args = parser.parse_args()
     config = load_config(args.train_config)
     run_eval(args, config)
