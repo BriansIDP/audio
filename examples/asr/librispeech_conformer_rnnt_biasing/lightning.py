@@ -7,7 +7,8 @@ import sentencepiece as spm
 import torch
 import torchaudio
 from pytorch_lightning import LightningModule
-from torchaudio.prototype.models import conformer_rnnt_biasing_base, Hypothesis, RNNTBeamSearchBiasing
+from torchaudio.prototype.models import Hypothesis, RNNTBeamSearchBiasing
+from torchaudio.prototype.models import conformer_rnnt_biasing_base, conformer_rnnt_biasing
 
 
 logger = logging.getLogger()
@@ -99,12 +100,40 @@ def post_process_hypos(
     return nbest_batch
 
 
+def get_conformer_rnnt_biasing(config, charlist, biasing=True):
+    return conformer_rnnt_model(
+        input_dim=config["rnnt_config"]["input_dim"],
+        encoding_dim=config["rnnt_config"]["encoding_dim"],
+        time_reduction_stride=config["rnnt_config"]["time_reduction_stride"],
+        conformer_input_dim=config["rnnt_config"]["conformer_input_dim"],
+        conformer_ffn_dim=config["rnnt_config"]["conformer_ffn_dim"],
+        conformer_num_layers=config["rnnt_config"]["conformer_num_layers"],
+        conformer_num_heads=config["rnnt_config"]["conformer_num_heads"],
+        conformer_depthwise_conv_kernel_size=config["rnnt_config"]["conformer_depthwise_conv_kernel_size"],
+        conformer_dropout=config["rnnt_config"]["conformer_dropout"],
+        num_symbols=config["rnnt_config"]["num_symbols"],
+        symbol_embedding_dim=config["rnnt_config"]["symbol_embedding_dim"],
+        num_lstm_layers=config["rnnt_config"]["num_lstm_layers"],
+        lstm_hidden_dim=config["rnnt_config"]["lstm_hidden_dim"],
+        lstm_layer_norm=config["rnnt_config"]["lstm_layer_norm"],
+        lstm_layer_norm_epsilon=config["rnnt_config"]["lstm_layer_norm_epsilon"],
+        lstm_dropout=config["rnnt_config"]["lstm_dropout"],
+        joiner_activation=config["rnnt_config"]["joiner_activation"],
+        attndim=config["rnnt_config"]["biasing_attndim"],
+        biasing=biasing,
+        charlist=charlist,
+        deepbiasing=config["rnnt_config"]["deepbiasing"],
+        tcpsche=config["rnnt_config"]["tcpgen_start_epoch"],
+        DBaverage=config["rnnt_config"]["deepbiasing_average"],
+    )
+
+
 class ConformerRNNTModule(LightningModule):
-    def __init__(self, sp_model, biasing=False):
+    def __init__(self, sp_model, config, biasing=False):
         super().__init__()
 
+        # self.sp_model = spm.SentencePieceProcessor(model_file=self.sp_model)
         self.sp_model = sp_model
-        self.sp_model = spm.SentencePieceProcessor(model_file=self.sp_model)
         spm_vocab_size = self.sp_model.get_piece_size()
         self.char_list = [self.sp_model.id_to_piece(idx) for idx in range(spm_vocab_size)]
         assert spm_vocab_size == _expected_spm_vocab_size, (
@@ -118,17 +147,33 @@ class ConformerRNNTModule(LightningModule):
         # ``conformer_rnnt_biasing_base`` hardcodes a specific Conformer RNN-T configuration.
         # For greater customizability, please refer to ``conformer_rnnt_biasing``.
         self.biasing = biasing
-        self.model = conformer_rnnt_biasing_base(charlist=self.char_list, biasing=self.biasing)
-        self.loss = torchaudio.transforms.RNNTLoss(reduction="sum", fused_log_softmax=False)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=5.0, betas=(0.9, 0.98), eps=1e-9)
+        # conformer_rnnt_biasing_base(charlist=self.char_list, biasing=self.biasing)
+        self.model = get_conformer_rnnt_biasing(config, charlist=self.char_list, biasing=biasing)
+        self.loss = torchaudio.transforms.RNNTLoss(
+            reduction=config["optim_config"]["reduction"],
+            fused_log_softmax=False,
+        )
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(),
+            lr=config["optim_config"]["lr"],
+            betas=(0.9, 0.98),
+            eps=1e-9,
+            weight_decay=config["optim_config"]["weight_decay"],
+        )
         # This scheduler is for clean 100 and train 90 epochs, should change it when running longer
         # self.warmup_lr_scheduler = WarmupLR(self.optimizer, 20, 60, 0.93)
         # self.warmup_lr_scheduler = WarmupLR(self.optimizer, 50000, 140000, 0.99995)
-        self.warmup_lr_scheduler = NoamLR(self.optimizer, warmup_steps=25000, model_size=1024)
+        self.warmup_lr_scheduler = NoamLR(
+            self.optimizer,
+            warmup_steps=config["optim_config"]["warmup_steps"],
+            model_size=config["rnnt_config"]["encoding_dim"],
+        )
         # The epoch from which the TCPGen starts to train
         self.tcpsche = self.model.tcpsche
 
         self.automatic_optimization = False
+        self._total_loss = 0
+        self._total_frames = 0
 
     def _step(self, batch, _, step_type):
         if batch is None:
@@ -164,7 +209,16 @@ class ConformerRNNTModule(LightningModule):
         else:
             logsmax_output = torch.log_softmax(output, dim=-1)
         loss = self.loss(logsmax_output, batch.targets, src_lengths, batch.target_lengths)
-        self.log(f"Losses/{step_type}_loss", loss, on_step=True, on_epoch=True, batch_size=batch.targets.size(0))
+        # self.log(f"Losses/{step_type}_loss", loss, on_step=True, on_epoch=True, batch_size=batch.targets.size(0))
+        self.log(f"Losses/{step_type}_loss", loss, on_step=True, on_epoch=True)
+
+        subsampling_factor = self.config["rnnt_config"]["time_reduction_stride"]
+        num_frames = (batch.feature_lengths // subsampling_factor).sum().item()
+        # https://github.com/k2-fsa/icefall/blob/master/egs/librispeech/ASR/conformer_ctc2/train.py#L699
+        reset_interval = 200
+        self._total_loss = (self._total_loss * (1 - 1 / reset_interval)) + loss.item()
+        self._total_frames = (self._total_frames * (1 - 1 / reset_interval)) + num_frames
+        self.log(f"Losses_normalized/{step_type}_loss", self._total_loss / self._total_frames, on_step=True, on_epoch=True)
 
         return loss
 
@@ -176,7 +230,7 @@ class ConformerRNNTModule(LightningModule):
 
     def forward(self, batch: Batch):
         decoder = RNNTBeamSearchBiasing(self.model, self.blank_idx, trie=batch.tries, biasing=self.biasing)
-        hypotheses = decoder(batch.features.to(self.device), batch.feature_lengths.to(self.device), 10)
+        hypotheses = decoder(batch.features.to(self.device), batch.feature_lengths.to(self.device), 20)
         return post_process_hypos(hypotheses, self.sp_model)[0][0]
 
     def training_step(self, batch: Batch, batch_idx):
@@ -200,33 +254,38 @@ class ConformerRNNTModule(LightningModule):
         variable-length sequential data commonly yields.
         """
 
-        # TODO: Hard coded gradient accum here
-        accumstep = 5
-        opt = self.optimizers()
-        if batch_idx % accumstep == 0 and batch_idx != 0:
-            opt.zero_grad()
+        # # TODO: Hard coded gradient accum here
+        # accumstep = 5
+        # opt = self.optimizers()
+        # if batch_idx % accumstep == 0 and batch_idx != 0:
+        #     opt.zero_grad()
+        # loss = self._step(batch, batch_idx, "train")
+        # batch_size = batch.features.size(0)
+        # batch_sizes = self.all_gather(batch_size)
+        # self.log(
+        #     "Gathered batch size",
+        #     batch_sizes.sum(),
+        #     on_step=True,
+        #     on_epoch=True,
+        #     batch_size=batch.targets.size(0),
+        # )
+        # loss *= batch_sizes.size(0) / batch_sizes.sum() / accumstep # world size / batch size
+        # self.manual_backward(loss)
+        # torch.nn.utils.clip_grad_norm_(self.model.parameters(), 5.0)
+        # sch = self.lr_schedulers()
+        # if batch_idx % accumstep == 0 and batch_idx != 0:
+        #     opt.step()
+        #     # step sch every step
+        #     sch.step()
+
+        # # step every epoch
+        # # if self.trainer.is_last_batch:
+        # #     sch.step()
         loss = self._step(batch, batch_idx, "train")
         batch_size = batch.features.size(0)
         batch_sizes = self.all_gather(batch_size)
-        self.log(
-            "Gathered batch size",
-            batch_sizes.sum(),
-            on_step=True,
-            on_epoch=True,
-            batch_size=batch.targets.size(0),
-        )
-        loss *= batch_sizes.size(0) / batch_sizes.sum() / accumstep # world size / batch size
-        self.manual_backward(loss)
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 5.0)
-        sch = self.lr_schedulers()
-        if batch_idx % accumstep == 0 and batch_idx != 0:
-            opt.step()
-            # step sch every step
-            sch.step()
-
-        # step every epoch
-        # if self.trainer.is_last_batch:
-        #     sch.step()
+        self.log("Gathered batch size", batch_sizes.sum(), on_step=True, on_epoch=True)
+        loss *= batch_sizes.size(0) / batch_sizes.sum()  # world size / batch size
 
         return loss
 

@@ -3,10 +3,13 @@ import os
 import pathlib
 from argparse import ArgumentParser
 
+import sentencepiece as spm
+
 import torch
 import torchaudio
 from lightning import ConformerRNNTModule
 from transforms import get_data_module
+from config import load_config, update_config, save_config
 
 
 logger = logging.getLogger()
@@ -16,14 +19,19 @@ def compute_word_level_distance(seq1, seq2):
     return torchaudio.functional.edit_distance(seq1.lower().split(), seq2.lower().split())
 
 
-def run_eval(args):
+def run_eval(args, config):
+    sp_model = spm.SentencePieceProcessor(model_file=str(args.sp_model_path))
     model = ConformerRNNTModule.load_from_checkpoint(
-        args.checkpoint_path, sp_model=str(args.sp_model_path), biasing=args.biasing
+        args.checkpoint_path,
+        sp_model=sp_model,
+        config=config,
+        biasing=args.biasing,
     ).eval()
     data_module = get_data_module(
         str(args.librispeech_path),
         str(args.global_stats_path),
         str(args.sp_model_path),
+        config,
         biasinglist=args.biasing_list,
         droprate=args.droprate,
         maxsize=args.maxsize,
@@ -117,7 +125,8 @@ def cli_main():
         help="Use biasing",
     )
     args = parser.parse_args()
-    run_eval(args)
+    config = load_config(args.train_config)
+    run_eval(args, config)
 
 
 if __name__ == "__main__":

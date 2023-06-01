@@ -2,21 +2,39 @@ import os
 import pathlib
 from argparse import ArgumentParser
 
+import sentencepiece as spm
+
 from lightning import ConformerRNNTModule
 from pytorch_lightning import seed_everything, Trainer
-from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint, Callback
 from pytorch_lightning.strategies import DDPStrategy
 from transforms import get_data_module
+from config import load_config, update_config, save_config
 
 
-def run_train(args):
-    seed_everything(1)
-    checkpoint_dir = args.exp_dir / "checkpoints"
+class MyTrainStartCallback(Callback):
+    def on_train_start(self, trainer, pl_module):
+        if pl_module.global_rank == 0:
+            print("Training is starting ...")
+
+            print("----------------- Training Configuration -------------------")
+            print(pl_module.config)
+            print("------------------------------------------------------------")
+
+            config_file = pathlib.Path(pl_module.config["training_config"]["exp_dir"]) / "train_config.yaml"
+            config_file = config_file.absolute()
+            print(f"Saving config to: {config_file}")
+            save_config(pl_module.config, config_file)
+
+
+def run_train(args, config):
+    seed_everything(config["training_config"]["seed"])
+    checkpoint_dir = pathlib.Path(config["training_config"]["exp_dir"]) / "checkpoints"
     checkpoint = ModelCheckpoint(
         checkpoint_dir,
         monitor="Losses/val_loss",
         mode="min",
-        save_top_k=5,
+        save_top_k=config["training_config"]["save_top_k"],
         save_weights_only=False,
         verbose=True,
     )
@@ -24,7 +42,7 @@ def run_train(args):
         checkpoint_dir,
         monitor="Losses/train_loss",
         mode="min",
-        save_top_k=5,
+        save_top_k=config["training_config"]["save_top_k"],
         save_weights_only=False,
         verbose=True,
     )
@@ -33,42 +51,47 @@ def run_train(args):
         checkpoint,
         train_checkpoint,
         lr_monitor,
+        MyTrainStartCallback(),
     ]
     if os.path.exists(args.resume) and args.resume != "":
         trainer = Trainer(
-            default_root_dir=args.exp_dir,
-            max_epochs=args.epochs,
-            num_nodes=args.nodes,
-            gpus=args.gpus,
+            default_root_dir=pathlib.Path(config["training_config"]["exp_dir"]),
+            max_epochs=config["training_config"]["epochs"],
+            num_nodes=config["training_config"]["nodes"],
+            gpus=config["training_config"]["gpus"],
             accelerator="gpu",
             strategy=DDPStrategy(find_unused_parameters=False),
             callbacks=callbacks,
             reload_dataloaders_every_n_epochs=1,
-            resume_from_checkpoint=args.resume,
+            gradient_clip_val=config["training_config"]["gradient_clip_val"],
+            resume_from_checkpoint=config["training_config"]["resume"],
         )
     else:
         trainer = Trainer(
-            default_root_dir=args.exp_dir,
-            max_epochs=args.epochs,
-            num_nodes=args.nodes,
-            gpus=args.gpus,
+            default_root_dir=pathlib.Path(config["training_config"]["exp_dir"]),
+            max_epochs=config["training_config"]["epochs"],
+            num_nodes=config["training_config"]["nodes"],
+            gpus=config["training_config"]["gpus"],
             accelerator="gpu",
             strategy=DDPStrategy(find_unused_parameters=False),
             callbacks=callbacks,
             reload_dataloaders_every_n_epochs=1,
+            gradient_clip_val=config["training_config"]["gradient_clip_val"],
         )
 
-    model = ConformerRNNTModule(str(args.sp_model_path), args.biasing)
+    sp_model = spm.SentencePieceProcessor(model_file=str(args.sp_model_path))
+    model = ConformerRNNTModule(sp_model, config, args.biasing)
     data_module = get_data_module(
         str(args.librispeech_path),
         str(args.global_stats_path),
         str(args.sp_model_path),
+        config,
         subset=args.subset,
         biasinglist=args.biasing_list,
         droprate=args.droprate,
         maxsize=args.maxsize,
     )
-    trainer.fit(model, data_module, ckpt_path=args.checkpoint_path)
+    trainer.fit(model, data_module, ckpt_path=config["training_config"]["checkpoint_path"])
 
 
 def cli_main():
@@ -146,6 +169,10 @@ def cli_main():
         help="Path to resume model.",
     )
     args = parser.parse_args()
+
+    config = load_config(args.train_config)
+    config = update_config(config, args)
+
     run_train(args)
 
 

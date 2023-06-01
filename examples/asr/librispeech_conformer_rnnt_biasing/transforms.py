@@ -10,6 +10,8 @@ import torchaudio
 from data_module import LibriSpeechDataModule
 from lightning import Batch
 
+import torchaudio.transforms as T
+
 
 _decibel = 2 * 20 * math.log10(torch.iinfo(torch.int16).max)
 _gain = pow(10, 0.05 * _decibel)
@@ -108,18 +110,55 @@ def make_lexical_tree(word_dict, word_unk):
 
 
 class TrainTransform:
-    def __init__(self, global_stats_path: str, sp_model_path: str, blist: List[str], droprate: float, maxsize: int):
+    def __init__(
+        self,
+        global_stats_path: str,
+        sp_model_path: str,
+        config: dict,
+        blist: List[str],
+        droprate: float,
+        maxsize: int
+    ):
         self.sp_model = spm.SentencePieceProcessor(model_file=sp_model_path)
-        self.train_data_pipeline = torch.nn.Sequential(
-            FunctionalModule(_piecewise_linear_log),
-            GlobalStatsNormalization(global_stats_path),
-            FunctionalModule(partial(torch.transpose, dim0=1, dim1=2)),
-            torchaudio.transforms.FrequencyMasking(27),
-            torchaudio.transforms.FrequencyMasking(27),
-            torchaudio.transforms.TimeMasking(100, p=0.2),
-            torchaudio.transforms.TimeMasking(100, p=0.2),
-            FunctionalModule(partial(torch.transpose, dim0=1, dim1=2)),
-        )
+        if config["specaug_conf"]["new_spec_aug_api"]:
+            spec_aug_transform = T.SpecAugment(
+                n_time_masks=config["specaug_conf"]["n_time_masks"],
+                time_mask_param=config["specaug_conf"]["time_mask_param"],
+                p=config["specaug_conf"]["p"],
+                n_freq_masks=config["specaug_conf"]["n_freq_masks"],
+                freq_mask_param=config["specaug_conf"]["freq_mask_param"],
+                iid_masks=config["specaug_conf"]["iid_masks"],
+                zero_masking=config["specaug_conf"]["zero_masking"],
+            )
+            self.train_data_pipeline = torch.nn.Sequential(
+                FunctionalModule(_piecewise_linear_log),
+                GlobalStatsNormalization(global_stats_path),
+                FunctionalModule(partial(torch.transpose, dim0=1, dim1=2)),
+                spec_aug_transform,
+                FunctionalModule(partial(torch.transpose, dim0=1, dim1=2)),
+            )
+        else:
+            layers = []
+            layers.append(FunctionalModule(_piecewise_linear_log))
+            layers.append(GlobalStatsNormalization(global_stats_path))
+            layers.append(FunctionalModule(partial(torch.transpose, dim0=1, dim1=2)))
+            for _ in range(config["specaug_conf"]["n_freq_masks"]):
+                layers.append(
+                    torchaudio.transforms.FrequencyMasking(
+                        config["specaug_conf"]["freq_mask_param"]
+                    )
+                )
+            for _ in range(config["specaug_conf"]["n_time_masks"]):
+                layers.append(
+                    torchaudio.transforms.TimeMasking(
+                        config["specaug_conf"]["time_mask_param"],
+                        p=config["specaug_conf"]["p"]
+                    )
+                )
+            layers.append(FunctionalModule(partial(torch.transpose, dim0=1, dim1=2)))
+            self.train_data_pipeline = torch.nn.Sequential(
+                *layers,
+            )
         self.blist = blist
         self.droprate = droprate
         self.maxsize = maxsize
@@ -164,7 +203,7 @@ class TestTransform:
 
 
 def get_data_module(
-    librispeech_path, global_stats_path, sp_model_path, subset=None, biasinglist=None, droprate=0.0, maxsize=1000
+    librispeech_path, global_stats_path, sp_model_path, config, subset=None, biasinglist=None, droprate=0.0, maxsize=1000
 ):
     fullbiasinglist = []
     if biasinglist:
@@ -173,6 +212,7 @@ def get_data_module(
     train_transform = TrainTransform(
         global_stats_path=global_stats_path,
         sp_model_path=sp_model_path,
+        config=config,
         blist=fullbiasinglist,
         droprate=droprate,
         maxsize=maxsize,
@@ -196,6 +236,9 @@ def get_data_module(
         train_transform=train_transform,
         val_transform=val_transform,
         test_transform=test_transform,
+        batch_size=config["optim_config"]["batch_size"],
+        max_tokens=config["optim_config"]["max_tokens"],
+        train_num_buckets=config["optim_config"]["train_num_buckets"],
         subset=subset,
         fullbiasinglist=fullbiasinglist,
     )
