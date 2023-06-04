@@ -11,10 +11,10 @@ python eval.py \
     --global-stats-path ./global_stats_full.json \
     --expdir $decode_dir \
     --use-cuda \
-    # --biasing \
-    # --biasing-list ./blists/all_rare_words.txt \
-    # --droprate 0.0 \
-    # --maxsize 1000 \
+    --biasing \
+    --biasing-list ./blists/all_rare_words.txt \
+    --droprate 0.0 \
+    --maxsize 1000 \
 
 
 ckpt='/fsx/users/huangruizhe/audio_guangzhi/examples/asr/librispeech_conformer_rnnt_biasing/experiments_biasing1/checkpoints/epoch=143-step=526752.ckpt'
@@ -27,5 +27,8 @@ srun -p scavenge --cpus-per-task=12 --gpus-per-node=1 --nodes 1 --ntasks-per-nod
   --use-cuda \
   --train-config $exp_dir/train_config.yaml \
   --checkpoint-path $ckpt \
-  --expdir $exp_dir
-
+  --expdir $exp_dir \
+  --biasing \
+  --biasing-list ./blists/all_rare_words.txt \
+  --droprate 0.0 \
+  --maxsize 1000 

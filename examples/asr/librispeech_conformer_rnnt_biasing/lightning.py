@@ -229,7 +229,8 @@ class ConformerRNNTModule(LightningModule):
         )
 
     def forward(self, batch: Batch):
-        decoder = RNNTBeamSearchBiasing(self.model, self.blank_idx, trie=batch.tries, biasing=self.biasing)
+        # decoder = RNNTBeamSearchBiasing(self.model, self.blank_idx, trie=batch.tries, biasing=self.biasing)
+        decoder = RNNTBeamSearchBiasing(self.model, self.blank_idx, trie=batch.tries, biasing=False)
         hypotheses = decoder(batch.features.to(self.device), batch.feature_lengths.to(self.device), 20)
         return post_process_hypos(hypotheses, self.sp_model)[0][0]
 
