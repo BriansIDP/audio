@@ -11,7 +11,7 @@ python eval.py \
     --global-stats-path ./global_stats_full.json \
     --expdir $decode_dir \
     --use-cuda \
-    # --biasing \
-    # --biasing-list ./blists/all_rare_words.txt \
-    # --droprate 0.0 \
-    # --maxsize 1000 \
+    --biasing \
+    --biasing-list ./blists/all_rare_words.txt \
+    --droprate 0.0 \
+    --maxsize 1000 \
