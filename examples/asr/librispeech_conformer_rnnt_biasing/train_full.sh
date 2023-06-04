@@ -14,3 +14,24 @@ python train.py \
     --maxsize 500 \
     # --resume experiments/librispeech_full960_suffix600_noam_highlr/checkpoints/epoch=51-step=121940.ckpt \
     # --resume experiments/librispeech_full960_suffix600/checkpoints/epoch=24-step=59600.ckpt \
+
+
+n_nodes=1
+exp_dir=./experiments_biasing1
+srun -p train --cpus-per-task=12 --gpus-per-node=8 --nodes $n_nodes --ntasks-per-node=8  \
+  python train.py \
+  --exp-dir $exp_dir \
+  --librispeech-path /fsx/users/huangruizhe/datasets \
+  --global-stats-path ./global_stats_full.json \
+  --sp-model-path ./spm_unigram_600_suffix_full.model \
+  --epochs 200 \
+  --nodes $n_nodes \
+  --gpus 8 \
+  --biasing \
+  --biasing-list ./blists/rareword_f120.txt \
+  --droprate 0.0 \
+  --maxsize 500
+
+# tensorboard
+log_dir=experiments_biasing1
+tensorboard dev upload --logdir $log_dir --description "$log_dir"

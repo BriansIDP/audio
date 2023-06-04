@@ -15,3 +15,17 @@ python eval.py \
     # --biasing-list ./blists/all_rare_words.txt \
     # --droprate 0.0 \
     # --maxsize 1000 \
+
+
+ckpt='/fsx/users/huangruizhe/audio_guangzhi/examples/asr/librispeech_conformer_rnnt_biasing/experiments_biasing1/checkpoints/epoch=143-step=526752.ckpt'
+exp_dir=./experiments_biasing1
+srun -p scavenge --cpus-per-task=12 --gpus-per-node=1 --nodes 1 --ntasks-per-node=1 \
+  python eval.py \
+  --librispeech-path /fsx/users/huangruizhe/datasets \
+  --global-stats-path ./global_stats_full.json \
+  --sp-model-path ./spm_unigram_600_suffix_full.model \
+  --use-cuda \
+  --train-config $exp_dir/train_config.yaml \
+  --checkpoint-path $ckpt \
+  --expdir $exp_dir
+

@@ -210,7 +210,7 @@ class ConformerRNNTModule(LightningModule):
         else:
             logsmax_output = torch.log_softmax(output, dim=-1)
         loss = self.loss(logsmax_output, batch.targets, src_lengths, batch.target_lengths)
-        self.log(f"Losses/{step_type}_loss", loss, on_step=True, on_epoch=True)
+        self.log(f"Losses/{step_type}_loss", loss, on_step=True, on_epoch=True, batch_size=batch.features.size(0))
 
         subsampling_factor = self.config["rnnt_config"]["time_reduction_stride"]
         num_frames = (batch.feature_lengths // subsampling_factor).sum().item()
@@ -218,14 +218,14 @@ class ConformerRNNTModule(LightningModule):
         reset_interval = 200
         self._total_loss = (self._total_loss * (1 - 1 / reset_interval)) + loss.item()
         self._total_frames = (self._total_frames * (1 - 1 / reset_interval)) + num_frames
-        self.log(f"Losses_normalized/{step_type}_loss", self._total_loss / self._total_frames, on_step=True, on_epoch=True)
+        self.log(f"Losses_normalized/{step_type}_loss", self._total_loss / self._total_frames, on_step=True, on_epoch=True, batch_size=batch.features.size(0))
 
         return loss
 
     def configure_optimizers(self):
         return (
             [self.optimizer],
-            [{"scheduler": self.warmup_lr_scheduler, "interval": "step"}],
+            [{"scheduler": self.warmup_lr_scheduler, "interval": "epoch"}],
         )
 
     def forward(self, batch: Batch):
@@ -284,7 +284,7 @@ class ConformerRNNTModule(LightningModule):
         loss = self._step(batch, batch_idx, "train")
         batch_size = batch.features.size(0)
         batch_sizes = self.all_gather(batch_size)
-        self.log("Gathered batch size", batch_sizes.sum(), on_step=True, on_epoch=True)
+        self.log("Gathered batch size", batch_sizes.sum(), on_step=True, on_epoch=True, batch_size=batch_sizes.sum())
         loss *= batch_sizes.size(0) / batch_sizes.sum()  # world size / batch size
 
         return loss

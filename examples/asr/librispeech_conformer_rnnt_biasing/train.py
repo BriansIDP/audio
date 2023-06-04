@@ -58,20 +58,19 @@ def run_train(args, config):
             default_root_dir=pathlib.Path(config["training_config"]["exp_dir"]),
             max_epochs=config["training_config"]["epochs"],
             num_nodes=config["training_config"]["nodes"],
-            gpus=config["training_config"]["gpus"],
+            devices=config["training_config"]["gpus"],
             accelerator="gpu",
             strategy=DDPStrategy(find_unused_parameters=False),
             callbacks=callbacks,
             reload_dataloaders_every_n_epochs=1,
             gradient_clip_val=config["training_config"]["gradient_clip_val"],
-            resume_from_checkpoint=config["training_config"]["resume"],
         )
     else:
         trainer = Trainer(
             default_root_dir=pathlib.Path(config["training_config"]["exp_dir"]),
             max_epochs=config["training_config"]["epochs"],
             num_nodes=config["training_config"]["nodes"],
-            gpus=config["training_config"]["gpus"],
+            devices=config["training_config"]["gpus"],
             accelerator="gpu",
             strategy=DDPStrategy(find_unused_parameters=False),
             callbacks=callbacks,
@@ -91,7 +90,7 @@ def run_train(args, config):
         droprate=args.droprate,
         maxsize=args.maxsize,
     )
-    trainer.fit(model, data_module, ckpt_path=config["training_config"]["checkpoint_path"])
+    trainer.fit(model, data_module, ckpt_path=config["training_config"]["resume"])
 
 
 def cli_main():
