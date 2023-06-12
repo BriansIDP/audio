@@ -42,6 +42,7 @@ def run_train(args, config):
         monitor="Losses/train_loss",
         mode="min",
         save_top_k=config["training_config"]["save_top_k"],
+        every_n_epochs=10,
         save_weights_only=False,
         verbose=True,
     )

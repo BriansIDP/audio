@@ -13,7 +13,7 @@ from torchaudio.prototype.models import conformer_rnnt_base, conformer_rnnt_mode
 
 logger = logging.getLogger()
 
-_expected_spm_vocab_size = 1023
+_expected_spm_vocab_size = 600
 
 Batch = namedtuple("Batch", ["features", "feature_lengths", "targets", "target_lengths"])
 

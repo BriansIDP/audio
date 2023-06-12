@@ -17,7 +17,7 @@ python train.py \
 
 
 n_nodes=1
-exp_dir=./experiments_biasing1
+exp_dir=./experiments_biasing2
 srun -p train --cpus-per-task=12 --gpus-per-node=8 --nodes $n_nodes --ntasks-per-node=8  \
   python train.py \
   --exp-dir $exp_dir \
@@ -31,6 +31,20 @@ srun -p train --cpus-per-task=12 --gpus-per-node=8 --nodes $n_nodes --ntasks-per
   --biasing-list ./blists/rareword_f120.txt \
   --droprate 0.0 \
   --maxsize 500
+
+# standard rnnt only
+n_nodes=1
+exp_dir=./experiments_rnnt1
+srun -p train --cpus-per-task=12 --gpus-per-node=8 --nodes $n_nodes --ntasks-per-node=8  \
+  python train.py \
+  --exp-dir $exp_dir \
+  --librispeech-path /fsx/users/huangruizhe/datasets \
+  --global-stats-path ./global_stats_full.json \
+  --sp-model-path ./spm_unigram_600_suffix_full.model \
+  --epochs 200 \
+  --nodes $n_nodes \
+  --gpus 8
+
 
 # tensorboard
 log_dir=experiments_biasing1

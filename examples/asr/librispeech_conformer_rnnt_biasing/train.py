@@ -65,6 +65,7 @@ def run_train(args, config):
             reload_dataloaders_every_n_epochs=1,
             gradient_clip_val=config["training_config"]["gradient_clip_val"],
         )
+        ckpt_path = config["training_config"]["resume"]
     else:
         trainer = Trainer(
             default_root_dir=pathlib.Path(config["training_config"]["exp_dir"]),
@@ -77,6 +78,7 @@ def run_train(args, config):
             reload_dataloaders_every_n_epochs=1,
             gradient_clip_val=config["training_config"]["gradient_clip_val"],
         )
+        ckpt_path = None
 
     sp_model = spm.SentencePieceProcessor(model_file=str(args.sp_model_path))
     model = ConformerRNNTModule(sp_model, config, args.biasing)
@@ -90,7 +92,7 @@ def run_train(args, config):
         droprate=args.droprate,
         maxsize=args.maxsize,
     )
-    trainer.fit(model, data_module, ckpt_path=config["training_config"]["resume"])
+    trainer.fit(model, data_module, ckpt_path=ckpt_path)
 
 
 def cli_main():

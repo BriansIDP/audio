@@ -71,49 +71,54 @@ default_config = {
         "gradient_clip_val": 10.0,
     },
     
-    # "optim_config": {
-    #     "warmup_steps": 40,
-    #     "force_anneal_step": 120, 
-    #     "anneal_factor": 0.96,
-    #     "lr": 8e-4,
-    #     "batch_size": None,
-    #     "max_tokens": 1800,
-    #     "train_num_buckets": 50,
-    #     "reduction": "sum",
-    #     "weight_decay": 0,
-    # },
     "optim_config": {
         "warmup_steps": 40,
-        "lr": 5,
+        "force_anneal_step": 120, 
+        "anneal_factor": 0.96,
+        "lr": 8e-4,
         "batch_size": None,
         "max_tokens": 1800,
         "train_num_buckets": 50,
         "reduction": "sum",
         "weight_decay": 0,
     },
-    # # Xiaohui's:
-    # "specaug_conf": {
-    #     "new_spec_aug_api": False,
-    #     "n_time_masks": 10,
-    #     "time_mask_param": 30,
-    #     "p": 0.2,
-    #     "n_freq_masks": 2,
-    #     "freq_mask_param": 27,
-    #     "iid_masks": True,
-    #     "zero_masking": True,
+    # "optim_config": {
+    #     "warmup_steps": 40,
+    #     "lr": 5,
+    #     "batch_size": None,
+    #     "max_tokens": 1800,
+    #     "train_num_buckets": 50,
+    #     "reduction": "sum",
+    #     "weight_decay": 0,
     # },
-
-    # Default:
+    # Xiaohui's:
     "specaug_conf": {
         "new_spec_aug_api": False,
-        "n_time_masks": 2,
-        "time_mask_param": 100,
+        "n_time_masks": 10,
+        "time_mask_param": 30,
         "p": 0.2,
         "n_freq_masks": 2,
         "freq_mask_param": 27,
         "iid_masks": True,
         "zero_masking": True,
     },
+
+    "biasing_attndim": 256,
+    "deepbiasing": True,
+    "tcpgen_start_epoch": 160,
+    "deepbiasing_average": False,
+
+    # # Default:
+    # "specaug_conf": {
+    #     "new_spec_aug_api": False,
+    #     "n_time_masks": 2,
+    #     "time_mask_param": 100,
+    #     "p": 0.2,
+    #     "n_freq_masks": 2,
+    #     "freq_mask_param": 27,
+    #     "iid_masks": True,
+    #     "zero_masking": True,
+    # },
 
     # # Espnet's:
     # "specaug_conf": {
