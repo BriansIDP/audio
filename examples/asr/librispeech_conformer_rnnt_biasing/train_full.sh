@@ -8,9 +8,9 @@ python train.py \
     --global-stats-path ./global_stats_full.json \
     --sp-model-path ./spm_unigram_600_suffix_full.model \
     --epochs 200 \
+    --resume experiments/librispeech_full960_suffix600_standard/checkpoints/epoch\=169-step\=621609.ckpt \
     --biasing \
     --biasing-list ./blists/rareword_f120.txt \
     --droprate 0.0 \
     --maxsize 500 \
-    # --resume experiments/librispeech_full960_suffix600_noam_highlr/checkpoints/epoch=51-step=121940.ckpt \
     # --resume experiments/librispeech_full960_suffix600/checkpoints/epoch=24-step=59600.ckpt \

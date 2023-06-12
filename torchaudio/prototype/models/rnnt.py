@@ -194,6 +194,7 @@ class RNNTBiasing(RNNT):
         self.nchars = len(self.char_list)
         self.DBaverage = DBaverage
         self.biasing = biasing
+
         if self.biasing:
             if self.deepbiasing and self.DBaverage:
                 # Deep biasing without TCPGen

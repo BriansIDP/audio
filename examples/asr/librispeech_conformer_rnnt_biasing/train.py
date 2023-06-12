@@ -9,6 +9,7 @@ from pytorch_lightning import seed_everything, Trainer
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint, Callback
 from pytorch_lightning.strategies import DDPStrategy
 from transforms import get_data_module
+import torch
 from config import load_config, update_config, save_config
 
 
@@ -53,34 +54,39 @@ def run_train(args, config):
         lr_monitor,
         MyTrainStartCallback(),
     ]
-    if os.path.exists(args.resume) and args.resume != "":
-        trainer = Trainer(
-            default_root_dir=pathlib.Path(config["training_config"]["exp_dir"]),
-            max_epochs=config["training_config"]["epochs"],
-            num_nodes=config["training_config"]["nodes"],
-            gpus=config["training_config"]["gpus"],
-            accelerator="gpu",
-            strategy=DDPStrategy(find_unused_parameters=False),
-            callbacks=callbacks,
-            reload_dataloaders_every_n_epochs=1,
-            gradient_clip_val=config["training_config"]["gradient_clip_val"],
-            resume_from_checkpoint=config["training_config"]["resume"],
-        )
-    else:
-        trainer = Trainer(
-            default_root_dir=pathlib.Path(config["training_config"]["exp_dir"]),
-            max_epochs=config["training_config"]["epochs"],
-            num_nodes=config["training_config"]["nodes"],
-            gpus=config["training_config"]["gpus"],
-            accelerator="gpu",
-            strategy=DDPStrategy(find_unused_parameters=False),
-            callbacks=callbacks,
-            reload_dataloaders_every_n_epochs=1,
-            gradient_clip_val=config["training_config"]["gradient_clip_val"],
-        )
+    # if os.path.exists(args.resume) and args.resume != "":
+    #     trainer = Trainer(
+    #         default_root_dir=pathlib.Path(config["training_config"]["exp_dir"]),
+    #         max_epochs=config["training_config"]["epochs"],
+    #         num_nodes=config["training_config"]["nodes"],
+    #         gpus=config["training_config"]["gpus"],
+    #         accelerator="gpu",
+    #         strategy=DDPStrategy(find_unused_parameters=False),
+    #         callbacks=callbacks,
+    #         reload_dataloaders_every_n_epochs=1,
+    #         gradient_clip_val=config["training_config"]["gradient_clip_val"],
+    #         resume_from_checkpoint=config["training_config"]["resume"],
+    #     )
+    # else:
+    trainer = Trainer(
+        default_root_dir=pathlib.Path(config["training_config"]["exp_dir"]),
+        max_epochs=config["training_config"]["epochs"],
+        num_nodes=config["training_config"]["nodes"],
+        gpus=config["training_config"]["gpus"],
+        accelerator="gpu",
+        strategy=DDPStrategy(find_unused_parameters=False),
+        callbacks=callbacks,
+        reload_dataloaders_every_n_epochs=1,
+        gradient_clip_val=config["training_config"]["gradient_clip_val"],
+    )
 
     sp_model = spm.SentencePieceProcessor(model_file=str(args.sp_model_path))
     model = ConformerRNNTModule(sp_model, config, args.biasing)
+
+    if args.resume != "":
+        orig_statedict = torch.load(config["training_config"]["resume"])["state_dict"]
+        model.load_state_dict(orig_statedict, strict=False)
+
     data_module = get_data_module(
         str(args.librispeech_path),
         str(args.global_stats_path),

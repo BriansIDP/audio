@@ -46,10 +46,11 @@ class WarmupLR(torch.optim.lr_scheduler._LRScheduler):
         super().__init__(optimizer, last_epoch=last_epoch, verbose=verbose)
 
     def get_lr(self):
-        if self._step_count < self.force_anneal_step:
-            return [(min(1.0, self._step_count / self.warmup_steps)) * base_lr for base_lr in self.base_lrs]
+        offset = 169
+        if self._step_count + offset < self.force_anneal_step:
+            return [(min(1.0, (self._step_count + offset) / self.warmup_steps)) * base_lr for base_lr in self.base_lrs]
         else:
-            scaling_factor = self.anneal_factor ** (self._step_count - self.force_anneal_step)
+            scaling_factor = self.anneal_factor ** (self._step_count + offset - self.force_anneal_step)
             return [scaling_factor * base_lr for base_lr in self.base_lrs]
 
 
@@ -74,7 +75,7 @@ class NoamLR(torch.optim.lr_scheduler._LRScheduler):
 
     def get_lr(self):
         scaling_factor = self.model_size ** (-0.5) \
-            * min(self._step_count ** (-0.5), self._step_count * self.warmup_steps ** (-1.5))
+            * min((self._step_count + 169) ** (-0.5), (self._step_count + 169) * self.warmup_steps ** (-1.5))
         return [scaling_factor * base_lr for base_lr in self.base_lrs]
 
 
@@ -165,10 +166,16 @@ class ConformerRNNTModule(LightningModule):
         # This scheduler is for clean 100 and train 90 epochs, should change it when running longer
         # self.warmup_lr_scheduler = WarmupLR(self.optimizer, 20, 60, 0.93)
         # self.warmup_lr_scheduler = WarmupLR(self.optimizer, 50000, 140000, 0.99995)
-        self.warmup_lr_scheduler = NoamLR(
-            self.optimizer,
-            warmup_steps=config["optim_config"]["warmup_steps"],
-            model_size=config["rnnt_config"]["encoding_dim"],
+        # self.warmup_lr_scheduler = NoamLR(
+        #     self.optimizer,
+        #     warmup_steps=config["optim_config"]["warmup_steps"],
+        #     model_size=config["rnnt_config"]["encoding_dim"],
+        # )
+        self.warmup_lr_scheduler = WarmupLR(
+            self.optimizer, 
+            config["optim_config"]["warmup_steps"], 
+            config["optim_config"]["force_anneal_step"], 
+            config["optim_config"]["anneal_factor"]
         )
         # The epoch from which the TCPGen starts to train
         self.tcpsche = self.model.tcpsche
@@ -210,7 +217,7 @@ class ConformerRNNTModule(LightningModule):
         else:
             logsmax_output = torch.log_softmax(output, dim=-1)
         loss = self.loss(logsmax_output, batch.targets, src_lengths, batch.target_lengths)
-        self.log(f"Losses/{step_type}_loss", loss, on_step=True, on_epoch=True)
+        self.log(f"Losses/{step_type}_loss", loss, on_step=True, on_epoch=True, batch_size=batch.targets.size(0))
 
         subsampling_factor = self.config["rnnt_config"]["time_reduction_stride"]
         num_frames = (batch.feature_lengths // subsampling_factor).sum().item()
@@ -218,14 +225,14 @@ class ConformerRNNTModule(LightningModule):
         reset_interval = 200
         self._total_loss = (self._total_loss * (1 - 1 / reset_interval)) + loss.item()
         self._total_frames = (self._total_frames * (1 - 1 / reset_interval)) + num_frames
-        self.log(f"Losses_normalized/{step_type}_loss", self._total_loss / self._total_frames, on_step=True, on_epoch=True)
+        self.log(f"Losses_normalized/{step_type}_loss", self._total_loss / self._total_frames, on_step=True, on_epoch=True, batch_size=batch.targets.size(0))
 
         return loss
 
     def configure_optimizers(self):
         return (
             [self.optimizer],
-            [{"scheduler": self.warmup_lr_scheduler, "interval": "step"}],
+            [{"scheduler": self.warmup_lr_scheduler, "interval": "epoch"}],
         )
 
     def forward(self, batch: Batch):
@@ -285,7 +292,7 @@ class ConformerRNNTModule(LightningModule):
         loss = self._step(batch, batch_idx, "train")
         batch_size = batch.features.size(0)
         batch_sizes = self.all_gather(batch_size)
-        self.log("Gathered batch size", batch_sizes.sum(), on_step=True, on_epoch=True)
+        self.log("Gathered batch size", batch_sizes.sum(), on_step=True, on_epoch=True, batch_size=batch_size)
         loss *= batch_sizes.size(0) / batch_sizes.sum()  # world size / batch size
 
         return loss
