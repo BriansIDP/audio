@@ -1,0 +1,51 @@
+optim_config:
+  anneal_factor: 0.96
+  batch_size: null
+  force_anneal_step: 120
+  lr: 0.0008
+  max_tokens: 1800
+  reduction: sum
+  train_num_buckets: 50
+  warmup_steps: 40
+  weight_decay: 0
+rnnt_config:
+  biasing_attndim: 256
+  conformer_depthwise_conv_kernel_size: 31
+  conformer_dropout: 0.1
+  conformer_ffn_dim: 2048
+  conformer_input_dim: 512
+  conformer_num_heads: 8
+  conformer_num_layers: 12
+  deepbiasing: true
+  deepbiasing_average: false
+  encoding_dim: 512
+  input_dim: 80
+  joiner_activation: tanh
+  lstm_dropout: 0.3
+  lstm_hidden_dim: 512
+  lstm_layer_norm: true
+  lstm_layer_norm_epsilon: 1.0e-05
+  num_lstm_layers: 2
+  num_symbols: 601
+  symbol_embedding_dim: 1024
+  tcpgen_start_epoch: 160
+  time_reduction_stride: 4
+specaug_conf:
+  freq_mask_param: 27
+  iid_masks: true
+  n_freq_masks: 2
+  n_time_masks: 2
+  new_spec_aug_api: false
+  p: 0.2
+  time_mask_param: 100
+  zero_masking: true
+spm_vocab_size: 600
+training_config:
+  checkpoint_path: null
+  epochs: 200
+  exp_dir: ./experiments_rnnt1
+  gpus: 8
+  gradient_clip_val: 10.0
+  nodes: 1
+  save_top_k: 5
+  seed: 1
