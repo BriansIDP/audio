@@ -55,7 +55,7 @@ default_config = {
         "joiner_activation": "tanh",
         "biasing_attndim": 256,
         "deepbiasing": True,
-        "tcpgen_start_epoch": 50,
+        "tcpgen_start_epoch": 0,
         "deepbiasing_average": False,
     },
 
