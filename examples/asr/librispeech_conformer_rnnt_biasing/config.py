@@ -76,8 +76,8 @@ default_config = {
         "force_anneal_step": 120, 
         "anneal_factor": 0.96,
         "lr": 8e-4,
-        "batch_size": None,
-        "max_tokens": 1800,
+        "batch_size": 25,
+        "max_tokens": 5400,
         "train_num_buckets": 50,
         "reduction": "sum",
         "weight_decay": 0,
@@ -102,11 +102,6 @@ default_config = {
         "iid_masks": True,
         "zero_masking": True,
     },
-
-    "biasing_attndim": 256,
-    "deepbiasing": True,
-    "tcpgen_start_epoch": 160,
-    "deepbiasing_average": False,
 
     # # Default:
     # "specaug_conf": {

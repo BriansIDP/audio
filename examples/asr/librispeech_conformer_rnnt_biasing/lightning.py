@@ -165,10 +165,16 @@ class ConformerRNNTModule(LightningModule):
         # This scheduler is for clean 100 and train 90 epochs, should change it when running longer
         # self.warmup_lr_scheduler = WarmupLR(self.optimizer, 20, 60, 0.93)
         # self.warmup_lr_scheduler = WarmupLR(self.optimizer, 50000, 140000, 0.99995)
-        self.warmup_lr_scheduler = NoamLR(
+        # self.warmup_lr_scheduler = NoamLR(
+        #     self.optimizer,
+        #     warmup_steps=config["optim_config"]["warmup_steps"],
+        #     model_size=config["rnnt_config"]["encoding_dim"],
+        # )
+        self.warmup_lr_scheduler = WarmupLR(
             self.optimizer,
-            warmup_steps=config["optim_config"]["warmup_steps"],
-            model_size=config["rnnt_config"]["encoding_dim"],
+            config["optim_config"]["warmup_steps"],
+            config["optim_config"]["force_anneal_step"],
+            config["optim_config"]["anneal_factor"]
         )
         # The epoch from which the TCPGen starts to train
         self.tcpsche = self.model.tcpsche
