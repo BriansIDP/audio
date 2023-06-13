@@ -165,7 +165,7 @@ class LibriSpeechDataModule(LightningDataModule):
             ]
         )
         # print(f"self.current_epoch = {self.current_epoch}")
-        self.train_transform.current_epoch = self.current_epoch
+        self.train_transform.current_epoch = self.current_epoch        
         dataset = TransformDataset(dataset, self.train_transform)
         dataloader = torch.utils.data.DataLoader(
             dataset,
@@ -196,12 +196,14 @@ class LibriSpeechDataModule(LightningDataModule):
                 for dataset, lengths in zip(datasets, self.val_dataset_lengths)
             ]
         )
+        self.val_transform.current_epoch = self.current_epoch
         dataset = TransformDataset(dataset, self.val_transform)
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=None, num_workers=self.num_workers)
         return dataloader
 
     def test_dataloader(self):
         dataset = self.librispeech_cls(self.librispeech_path, url="test-clean", blist=self.fullbiasinglist)
+        self.test_transform.current_epoch = self.current_epoch
         dataset = TransformDataset(dataset, self.test_transform)
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=None)
         return dataloader

@@ -51,13 +51,14 @@ class GlobalStatsNormalization(torch.nn.Module):
         return (input - self.mean) * self.invstddev
 
 
-def _extract_labels(sp_model, samples: List):
+def _extract_labels(sp_model, samples: List, epoch=None):
     targets = [sp_model.encode(sample[2].lower()) for sample in samples]
     biasingwords = []
-    for sample in samples:
-        for word in sample[6]:
-            if word not in biasingwords:
-                biasingwords.append(word)
+    if epoch is None or epoch >= 159:  # TODO: 160 is hard-wired!
+        for sample in samples:
+            for word in sample[6]:
+                if word not in biasingwords:
+                    biasingwords.append(word)
     lengths = torch.tensor([len(elem) for elem in targets]).to(dtype=torch.int32)
     targets = torch.nn.utils.rnn.pad_sequence(
         [torch.tensor(elem) for elem in targets],
@@ -163,12 +164,12 @@ class TrainTransform:
         self.droprate = droprate
         self.maxsize = maxsize
 
-        self.current_poch = 0
+        self.current_epoch = 0
 
     def __call__(self, samples: List):
         features, feature_lengths = _extract_features(self.train_data_pipeline, samples)
-        targets, target_lengths, biasingwords = _extract_labels(self.sp_model, samples)
-        if self.blist:
+        targets, target_lengths, biasingwords = _extract_labels(self.sp_model, samples, self.current_epoch)
+        if self.blist and self.current_epoch >= 159:  # TODO: 159 is hard-wired
             tries, biasingwords = _extract_tries(self.sp_model, biasingwords, self.blist, self.droprate, self.maxsize)
         else:
             tries = []
@@ -186,10 +187,12 @@ class ValTransform:
         self.droprate = droprate
         self.maxsize = maxsize
 
+        self.current_epoch = 0
+
     def __call__(self, samples: List):
         features, feature_lengths = _extract_features(self.valid_data_pipeline, samples)
-        targets, target_lengths, biasingwords = _extract_labels(self.sp_model, samples)
-        if self.blist:
+        targets, target_lengths, biasingwords = _extract_labels(self.sp_model, samples, self.current_epoch)
+        if self.blist and self.current_epoch >= 159:  # TODO: 159 is hard-wired
             tries, biasingwords = _extract_tries(self.sp_model, biasingwords, self.blist, self.droprate, self.maxsize)
         else:
             tries = []
