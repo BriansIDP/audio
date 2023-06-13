@@ -17,7 +17,7 @@ python train.py \
 
 
 n_nodes=1
-exp_dir=./experiments_biasing2
+exp_dir=./experiments_biasing_20230613
 srun -p train --cpus-per-task=12 --gpus-per-node=8 --nodes $n_nodes --ntasks-per-node=8  \
   python train.py \
   --exp-dir $exp_dir \

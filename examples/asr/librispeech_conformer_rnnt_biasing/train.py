@@ -25,6 +25,12 @@ class MyTrainStartCallback(Callback):
             config_file = config_file.absolute()
             print(f"Saving config to: {config_file}")
             save_config(pl_module.config, config_file)
+    
+    def on_train_epoch_start(self, trainer, pl_module):
+        # https://github.com/Lightning-AI/lightning/discussions/13060
+        
+        # print(f"pl_module.current_epoch = {pl_module.current_epoch}")
+        trainer.datamodule.set_epoch(trainer.current_epoch)
 
 
 def run_train(args, config):
@@ -37,6 +43,7 @@ def run_train(args, config):
         save_top_k=config["training_config"]["save_top_k"],
         save_weights_only=False,
         verbose=True,
+        every_n_epochs=10,
     )
     train_checkpoint = ModelCheckpoint(
         checkpoint_dir,
@@ -64,6 +71,8 @@ def run_train(args, config):
             callbacks=callbacks,
             reload_dataloaders_every_n_epochs=1,
             gradient_clip_val=config["training_config"]["gradient_clip_val"],
+            # limit_train_batches=10,
+            # limit_val_batches=10,
         )
         ckpt_path = config["training_config"]["resume"]
     else:
@@ -77,6 +86,8 @@ def run_train(args, config):
             callbacks=callbacks,
             reload_dataloaders_every_n_epochs=1,
             gradient_clip_val=config["training_config"]["gradient_clip_val"],
+            # limit_train_batches=10,
+            # limit_val_batches=10,
         )
         ckpt_path = None
 

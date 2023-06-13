@@ -163,6 +163,8 @@ class TrainTransform:
         self.droprate = droprate
         self.maxsize = maxsize
 
+        self.current_poch = 0
+
     def __call__(self, samples: List):
         features, feature_lengths = _extract_features(self.train_data_pipeline, samples)
         targets, target_lengths, biasingwords = _extract_labels(self.sp_model, samples)

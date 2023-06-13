@@ -132,6 +132,7 @@ class LibriSpeechDataModule(LightningDataModule):
         self.train_num_buckets = train_num_buckets
         self.train_shuffle = train_shuffle
         self.num_workers = num_workers
+        self.current_epoch = 0
 
         if subset is not None and subset != "train-clean-100":
             raise ValueError('subset must be ``None`` or `"train-clean-100"`. Found: {subset}')
@@ -163,6 +164,8 @@ class LibriSpeechDataModule(LightningDataModule):
                 for dataset, lengths in zip(datasets, self.train_dataset_lengths)
             ]
         )
+        # print(f"self.current_epoch = {self.current_epoch}")
+        self.train_transform.current_epoch = self.current_epoch
         dataset = TransformDataset(dataset, self.train_transform)
         dataloader = torch.utils.data.DataLoader(
             dataset,
@@ -202,3 +205,6 @@ class LibriSpeechDataModule(LightningDataModule):
         dataset = TransformDataset(dataset, self.test_transform)
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=None)
         return dataloader
+
+    def set_epoch(self, current_epoch):
+        self.current_epoch = current_epoch
