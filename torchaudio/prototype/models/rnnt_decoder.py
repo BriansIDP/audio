@@ -173,6 +173,7 @@ class RNNTBeamSearchBiasing(torch.nn.Module):
         if self.dobiasing:
             p_gen = torch.sigmoid(self.model.pointer_gate(torch.cat((joined_activation, hptr), dim=-1)))
             p_gen = p_gen.masked_fill(genprob_masks.view(p_gen.size(0), 1, 1, 1), 0)
+            # print(p_gen.max())
             model_tu = torch.softmax(joined_out / self.temperature, dim=3)
             # assuming last token is blank
             p_not_null = 1.0 - model_tu[:, :, :, -1:]

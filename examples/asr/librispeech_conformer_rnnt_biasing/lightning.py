@@ -1,5 +1,6 @@
 import logging
 import math
+import time
 from collections import namedtuple
 from typing import List, Tuple
 
@@ -46,7 +47,7 @@ class WarmupLR(torch.optim.lr_scheduler._LRScheduler):
         super().__init__(optimizer, last_epoch=last_epoch, verbose=verbose)
 
     def get_lr(self):
-        offset = 169
+        offset = 0
         if self._step_count + offset < self.force_anneal_step:
             return [(min(1.0, (self._step_count + offset) / self.warmup_steps)) * base_lr for base_lr in self.base_lrs]
         else:
@@ -191,6 +192,7 @@ class ConformerRNNTModule(LightningModule):
         prepended_targets[:, 1:] = batch.targets
         prepended_targets[:, 0] = self.blank_idx
         prepended_target_lengths = batch.target_lengths + 1
+        start = time.time()
         output, src_lengths, _, _, tcpgen_dist, p_gen = self.model(
             batch.features,
             batch.feature_lengths,
@@ -218,6 +220,7 @@ class ConformerRNNTModule(LightningModule):
             logsmax_output = torch.log_softmax(output, dim=-1)
         loss = self.loss(logsmax_output, batch.targets, src_lengths, batch.target_lengths)
         self.log(f"Losses/{step_type}_loss", loss, on_step=True, on_epoch=True, batch_size=batch.targets.size(0))
+        self.log(f"Losses/tcpgen_coeff", p_gen.max(), on_step=True, on_epoch=True, batch_size=batch.targets.size(0))
 
         subsampling_factor = self.config["rnnt_config"]["time_reduction_stride"]
         num_frames = (batch.feature_lengths // subsampling_factor).sum().item()
@@ -232,7 +235,7 @@ class ConformerRNNTModule(LightningModule):
     def configure_optimizers(self):
         return (
             [self.optimizer],
-            [{"scheduler": self.warmup_lr_scheduler, "interval": "epoch"}],
+            [{"scheduler": self.warmup_lr_scheduler, "interval": "step"}],
         )
 
     def forward(self, batch: Batch):

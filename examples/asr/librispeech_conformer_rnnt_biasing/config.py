@@ -72,12 +72,12 @@ default_config = {
     },
     
     "optim_config": {
-        "warmup_steps": 40,
-        "force_anneal_step": 120, 
-        "anneal_factor": 0.96,
+        "warmup_steps": 80000,
+        "force_anneal_step": 320000, 
+        "anneal_factor": 0.99999,
         "lr": 8e-4,
-        "batch_size": 25,
-        "max_tokens": 5400,
+        "batch_size": 20,
+        "max_tokens": 3600,
         "train_num_buckets": 50,
         "reduction": "sum",
         "weight_decay": 0,

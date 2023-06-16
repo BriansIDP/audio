@@ -1,4 +1,5 @@
 import math
+import time
 from typing import Dict, List, Optional, Tuple
 
 import torch
@@ -306,9 +307,10 @@ class RNNTBiasing(RNNT):
         if self.biasing and hptr is not None and tcpgen_dist is not None:
             p_gen = torch.sigmoid(self.pointer_gate(torch.cat((jointer_activation, hptr), dim=-1)))
             # avoid collapsing to ooKB token in the first few updates
-            # if current_epoch == self.tcpsche:
-            #     p_gen = p_gen * 0.1
+            if current_epoch == self.tcpsche:
+                p_gen = torch.nn.functional.threshold(p_gen, 0.5, 0.5) * 0.1
             p_gen = p_gen.masked_fill(p_gen_mask.bool().unsqueeze(1).unsqueeze(-1), 0)
+
 
         return (output, source_lengths, target_lengths, predictor_state, tcpgen_dist, p_gen)
 

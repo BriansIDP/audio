@@ -85,7 +85,13 @@ def run_train(args, config):
 
     if args.resume != "":
         orig_statedict = torch.load(config["training_config"]["resume"])["state_dict"]
+        freeze_names = orig_statedict.keys()
         model.load_state_dict(orig_statedict, strict=False)
+        # freeze params
+        for name, param in model.named_parameters():
+            if name in orig_statedict:
+                print("freezing {}".format(name))
+                param.requires_grad = False
 
     data_module = get_data_module(
         str(args.librispeech_path),
