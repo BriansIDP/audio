@@ -54,7 +54,7 @@ default_config = {
         "lstm_dropout": 0.3,
         "joiner_activation": "tanh",
         "biasing_attndim": 256,
-        "deepbiasing": True,
+        "deepbiasing": False,
         "tcpgen_start_epoch": 0,
         "deepbiasing_average": False,
     },
