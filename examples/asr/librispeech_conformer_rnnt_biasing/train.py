@@ -85,11 +85,12 @@ def run_train(args, config):
 
     if args.resume != "":
         orig_statedict = torch.load(config["training_config"]["resume"])["state_dict"]
+        TCPGen_params = ['model.joiner.biasinglinear.weight', 'model.joiner.biasinglinear.bias', 'model.ooKBemb.weight', 'model.Qproj_char.weight', 'model.Qproj_char.bias', 'model.Qproj_acoustic.weight', 'model.Qproj_acoustic.bias', 'model.Kproj.weight', 'model.Kproj.bias', 'model.pointer_gate.weight', 'model.pointer_gate.bias']
         freeze_names = orig_statedict.keys()
         model.load_state_dict(orig_statedict, strict=False)
         # freeze params
         for name, param in model.named_parameters():
-            if name in orig_statedict:
+            if name not in TCPGen_params:
                 print("freezing {}".format(name))
                 param.requires_grad = False
 

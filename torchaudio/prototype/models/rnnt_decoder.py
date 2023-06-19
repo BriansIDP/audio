@@ -136,7 +136,7 @@ class RNNTBeamSearchBiasing(torch.nn.Module):
     def _get_trie_mask(self, trie):
         step_mask = torch.ones(len(self.model.char_list) + 1)
         step_mask[list(trie[0].keys())] = 0
-        # step_mask[-1] = 0
+        step_mask[-1] = 0
         return step_mask
 
     def _get_generation_prob(self, trie):
@@ -179,6 +179,7 @@ class RNNTBeamSearchBiasing(torch.nn.Module):
             p_not_null = 1.0 - model_tu[:, :, :, -1:]
             ptr_dist_fact = torch.cat([tcpgen_dist[:, :, :, :-2], tcpgen_dist[:, :, :, -1:]], dim=-1) * p_not_null
             ptr_gen_complement = tcpgen_dist[:, :, :, -1:] * p_gen
+            # print((tcpgen_dist[:, :, :, :-1] * p_gen).sum())
             p_partial = ptr_dist_fact[:, :, :, :-1] * p_gen + model_tu[:, :, :, :-1] * (1 - p_gen + ptr_gen_complement)
             p_final = torch.cat([p_partial, model_tu[:, :, :, -1:]], dim=-1)
             joined_out = torch.log(p_final)

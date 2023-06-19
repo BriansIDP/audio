@@ -193,7 +193,7 @@ class ConformerRNNTModule(LightningModule):
         prepended_targets[:, 0] = self.blank_idx
         prepended_target_lengths = batch.target_lengths + 1
         start = time.time()
-        output, src_lengths, _, _, tcpgen_dist, p_gen = self.model(
+        output, src_lengths, _, _, tcpgen_dist, p_gen, p_gen_loss = self.model(
             batch.features,
             batch.feature_lengths,
             prepended_targets,
@@ -219,8 +219,12 @@ class ConformerRNNTModule(LightningModule):
         else:
             logsmax_output = torch.log_softmax(output, dim=-1)
         loss = self.loss(logsmax_output, batch.targets, src_lengths, batch.target_lengths)
+        # biasing loss
+        p_gen_loss = p_gen_loss / batch.targets.size(0)
         self.log(f"Losses/{step_type}_loss", loss, on_step=True, on_epoch=True, batch_size=batch.targets.size(0))
         self.log(f"Losses/tcpgen_coeff", p_gen.max(), on_step=True, on_epoch=True, batch_size=batch.targets.size(0))
+        loss += p_gen_loss
+        self.log(f"Losses/p_gen_loss", p_gen_loss, on_step=True, on_epoch=True, batch_size=batch.targets.size(0))
 
         subsampling_factor = self.config["rnnt_config"]["time_reduction_stride"]
         num_frames = (batch.feature_lengths // subsampling_factor).sum().item()
@@ -239,8 +243,8 @@ class ConformerRNNTModule(LightningModule):
         )
 
     def forward(self, batch: Batch):
-        # decoder = RNNTBeamSearchBiasing(self.model, self.blank_idx, trie=batch.tries, biasing=self.biasing)
-        decoder = RNNTBeamSearchBiasing(self.model, self.blank_idx, trie=batch.tries, biasing=False)
+        decoder = RNNTBeamSearchBiasing(self.model, self.blank_idx, trie=batch.tries, biasing=self.biasing)
+        # decoder = RNNTBeamSearchBiasing(self.model, self.blank_idx, trie=batch.tries, biasing=False)
         hypotheses = decoder(batch.features.to(self.device), batch.feature_lengths.to(self.device), 20)
         return post_process_hypos(hypotheses, self.sp_model)[0][0]
 
