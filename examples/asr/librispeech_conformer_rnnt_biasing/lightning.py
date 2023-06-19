@@ -218,7 +218,7 @@ class ConformerRNNTModule(LightningModule):
             p_gen = torch.zeros(1)
         loss = self.loss(logsmax_output, batch.targets, src_lengths, batch.target_lengths)
         # Biasing loss
-        p_gen_loss = p_gen_loss / batch.targets.size(0)
+        p_gen_loss = p_gen_loss / batch.targets.size(0) * 0.1
         self.log(f"Losses/{step_type}_loss", loss, on_step=True, on_epoch=True, batch_size=batch.features.size(0))
         self.log(f"Losses/tcpgen_coeff", p_gen.max(), on_step=True, on_epoch=True, batch_size=batch.targets.size(0))
         loss += p_gen_loss
