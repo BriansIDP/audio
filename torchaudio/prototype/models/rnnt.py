@@ -303,14 +303,14 @@ class RNNTBiasing(RNNT):
         )
 
         # Calculate Generation Probability
+        p_gen_loss = 0
         if self.biasing and hptr is not None and tcpgen_dist is not None:
             p_gen = torch.sigmoid(self.pointer_gate(torch.cat((jointer_activation, hptr), dim=-1)))
             # avoid collapsing to ooKB token in the first few updates
             # if current_epoch == self.tcpsche:
             #     p_gen = p_gen * 0.1
             p_gen = p_gen.masked_fill(p_gen_mask.bool().unsqueeze(1).unsqueeze(-1), 0)
-            p_gen_loss = 0
-            if current_epoch < self.tcpsche + 30:
+            if current_epoch < self.tcpsche + 5:
                 p_gen_label = p_gen_label.unsqueeze(1).unsqueeze(-1)
                 p_gen_loss = ((p_gen - p_gen_label) ** 2).sum()
 
