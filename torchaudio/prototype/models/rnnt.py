@@ -276,7 +276,8 @@ class RNNTBiasing(RNNT):
         hptr = None
         tcpgen_dist, p_gen = None, None
         if self.biasing and current_epoch >= self.tcpsche and tries != []:
-            ptrdist_mask, p_gen_mask = self.get_tcpgen_step_masks(targets, tries)
+            ptrdist_mask, p_gen_mask, gt_mask = self.get_tcpgen_step_masks(targets, tries)
+            p_gen_label = (1-gt_mask).sum(dim=-1)
             hptr, tcpgen_dist = self.forward_tcpgen(targets, ptrdist_mask, source_encodings)
             hptr = self.dropout_tcpgen(hptr)
         elif self.biasing:
@@ -308,8 +309,12 @@ class RNNTBiasing(RNNT):
             # if current_epoch == self.tcpsche:
             #     p_gen = p_gen * 0.1
             p_gen = p_gen.masked_fill(p_gen_mask.bool().unsqueeze(1).unsqueeze(-1), 0)
+            p_gen_loss = 0
+            if current_epoch < self.tcpsche + 5:
+                p_gen_label = p_gen_label.unsqueeze(1).unsqueeze(-1)
+                p_gen_loss = ((p_gen - p_gen_label) ** 2).sum()
 
-        return (output, source_lengths, target_lengths, predictor_state, tcpgen_dist, p_gen)
+        return (output, source_lengths, target_lengths, predictor_state, tcpgen_dist, p_gen, p_gen_loss)
 
     def get_tcpgen_distribution(self, query, ptrdist_mask):
         # Make use of the predictor embedding matrix
@@ -341,6 +346,7 @@ class RNNTBiasing(RNNT):
         seqlen = len(yseqs[0])
         batch_masks = yseqs.new_ones(len(yseqs), seqlen, len(self.char_list) + 1)
         p_gen_masks = []
+        gt_mask = yseqs.new_ones(len(yseqs), seqlen, len(self.char_list) + 1)
         for i, yseq in enumerate(yseqs):
             new_tree = resettrie
             p_gen_mask = []
@@ -363,6 +369,8 @@ class RNNTBiasing(RNNT):
                     new_tree = new_tree[vy]
                     p_gen_mask.append(0)
                 batch_masks[i, j, list(new_tree[0].keys())] = 0
+                if j+1 < len(yseq) and yseq[j+1].item() in new_tree[0].keys():
+                    gt_mask[i, j, yseq[j+1]] = 0
                 # In the original paper, ooKB node was not masked
                 # In this implementation, if not masking ooKB, ooKB probability
                 # would quickly collapse to 1.0 in the first few updates.
@@ -370,7 +378,7 @@ class RNNTBiasing(RNNT):
                 # batch_masks[i, j, -1] = 0
             p_gen_masks.append(p_gen_mask + [1] * (seqlen - len(p_gen_mask)))
         p_gen_masks = torch.Tensor(p_gen_masks).to(yseqs.device).byte()
-        return batch_masks, p_gen_masks
+        return batch_masks, p_gen_masks, gt_mask
 
     def get_tcpgen_step_masks_prefix(self, yseqs, resettrie):
         # Implemented for prefix-based wordpieces, not tested yet
