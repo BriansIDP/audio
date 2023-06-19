@@ -310,7 +310,7 @@ class RNNTBiasing(RNNT):
             #     p_gen = p_gen * 0.1
             p_gen = p_gen.masked_fill(p_gen_mask.bool().unsqueeze(1).unsqueeze(-1), 0)
             p_gen_loss = 0
-            if current_epoch < self.tcpsche + 5:
+            if current_epoch < self.tcpsche + 30:
                 p_gen_label = p_gen_label.unsqueeze(1).unsqueeze(-1)
                 p_gen_loss = ((p_gen - p_gen_label) ** 2).sum()
 
